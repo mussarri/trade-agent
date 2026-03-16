@@ -190,7 +190,8 @@ class Pipeline:
                     continue
 
                 # Risk planı
-                plan = self.risk_planner.plan_from_trigger(trigger, ltf_ctx)
+                atr = calculate_atr(ltf_ctx.candles) if ltf_ctx.candles else 0.0
+                plan = self.risk_planner.plan_from_trigger(trigger, atr)
                 if plan.rr_ratio < self.min_rr_ratio:
                     self.active_setups[key].remove(setup)
                     continue
