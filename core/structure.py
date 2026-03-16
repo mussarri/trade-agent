@@ -68,15 +68,20 @@ def detect_fvg(candles: list[Candle]) -> FairValueGap | None:
     return None
 
 
+# market_direction() fonksiyonunu güncelle
 def market_direction(labels: list[str]) -> Direction:
-    if not labels:
+    if len(labels) < 3:
         return "neutral"
-    last = labels[-4:]
+    last = labels[-6:]   # 4'ten 6'ya çıkar
     bullish_votes = sum(1 for x in last if x in {"HH", "HL"})
     bearish_votes = sum(1 for x in last if x in {"LL", "LH"})
-    if bullish_votes > bearish_votes:
+    total = bullish_votes + bearish_votes
+    if total == 0:
+        return "neutral"
+    # %60 çoğunluk yeterli — eskiden %100 gerekiyordu pratikte
+    if bullish_votes / total >= 0.6:
         return "bullish"
-    if bearish_votes > bullish_votes:
+    if bearish_votes / total >= 0.6:
         return "bearish"
     return "neutral"
 

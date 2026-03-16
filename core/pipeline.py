@@ -135,163 +135,95 @@ class Pipeline:
 
     async def run(self, htf_ctx: StructureContext, ltf_ctx: StructureContext) -> list[AlertPayload]:
         symbol = ltf_ctx.symbol
-
-        # ── HARD FILTER ───────────────────────────────────────────────────
         htf_trend = htf_ctx.trend
-        if htf_trend == "neutral":
-            logger.debug("HTF neutral — %s skipped", symbol)
-            return []
-
-        produced: list[AlertPayload] = []
+        produced = []
 
         for scenario in self.scenarios:
-            skey = self._setup_key(symbol, scenario.name)
-            setups = self.active_setups.get(skey, [])
+            key = f"{scenario.name}:{symbol}"
+            setups = self.active_setups.setdefault(key, [])
 
-            # 1. Age candles
+            # 1. Elapsed
             for s in setups:
                 s.candles_elapsed += 1
 
-            # 2. Invalidation check
-            valid_setups = [s for s in setups if not scenario.is_invalidated(s, ltf_ctx)]
-            self.active_setups[skey] = valid_setups
+            # 2. Invalidasyon
+            self.active_setups[key] = [
+                s for s in setups if not scenario.is_invalidated(s, ltf_ctx)
+            ]
 
-            # 3. New setup — only when no active setup, only if HTF trend matches
-            if not valid_setups:
+            # 3. Yeni setup
+            if not self.active_setups[key]:
                 new_setup = scenario.detect_setup(htf_ctx, ltf_ctx)
                 if new_setup:
+                    # Yön kontrolü — neutral'da her iki yön de kabul
                     trend_ok = (
+                        htf_trend == "neutral" or
                         (htf_trend == "bullish" and new_setup.direction == "long") or
                         (htf_trend == "bearish" and new_setup.direction == "short")
                     )
                     if trend_ok:
-                        self.active_setups[skey] = [new_setup]
-                        logger.info(
-                            "Setup: %s %s %s watch=[%.4f, %.4f]",
-                            scenario.name, symbol, new_setup.direction,
-                            new_setup.entry_zone_low, new_setup.entry_zone_high,
-                        )
-                        setup_dict = {
-                            "event": "setup",
-                            "scenario_name": new_setup.scenario_name,
-                            "alert_type": new_setup.alert_type,
-                            "symbol": new_setup.symbol,
-                            "pair": new_setup.symbol.replace("/", ""),
-                            "timeframe": new_setup.timeframe,
-                            "timeframe_htf": htf_ctx.timeframe,
-                            "direction": new_setup.direction,
-                            "htf_trend": htf_trend,
-                            "entry_zone_low": new_setup.entry_zone_low,
-                            "entry_zone_high": new_setup.entry_zone_high,
-                            "invalidation_level": new_setup.invalidation_level,
-                            "max_candles": new_setup.max_candles,
-                            "meta": new_setup.meta,
-                        }
-                        await self._dispatch_setup_alerts(setup_dict)
-                        if self.broadcaster:
-                            msg = {"type": "setup_detected", "data": setup_dict}
-                            maybe = self.broadcaster(msg)
-                            if asyncio.iscoroutine(maybe):
-                                await maybe
-                continue
+                        self.active_setups[key].append(new_setup)
+                        logger.info("Setup: %s %s %s", scenario.name, symbol, new_setup.direction)
 
-            # 4. Trigger check
-            for setup in valid_setups[:]:
-                if self._is_on_cooldown(symbol):
-                    continue
-
+            # 4. Trigger
+            for setup in self.active_setups[key][:]:
                 trigger = scenario.detect_trigger(setup, ltf_ctx)
                 if not trigger:
                     continue
 
-                trigger_dict = {
-                    "event": "trigger",
-                    "scenario_name": trigger.setup.scenario_name,
-                    "alert_type": trigger.setup.alert_type,
-                    "symbol": trigger.setup.symbol,
-                    "pair": trigger.setup.symbol.replace("/", ""),
-                    "timeframe": trigger.setup.timeframe,
-                    "timeframe_htf": htf_ctx.timeframe,
-                    "direction": trigger.setup.direction,
-                    "htf_trend": htf_trend,
-                    "entry_zone_low": trigger.setup.entry_zone_low,
-                    "entry_zone_high": trigger.setup.entry_zone_high,
-                    "invalidation_level": trigger.setup.invalidation_level,
-                    "conditions": trigger.conditions.model_dump(),
-                    "confidence_factors": trigger.confidence_factors,
-                    "timestamp": trigger.timestamp.isoformat(),
-                }
-                await self._dispatch_trigger_alerts(trigger_dict)
-                if self.broadcaster:
-                    msg = {"type": "trigger_fired", "data": trigger_dict}
-                    maybe = self.broadcaster(msg)
-                    if asyncio.iscoroutine(maybe):
-                        await maybe
+                # Cooldown
+                last_alert = self.alert_cooldowns.get(symbol)
+                if last_alert:
+                    elapsed_min = (datetime.now(timezone.utc) - last_alert).total_seconds() / 60
+                    if elapsed_min < self.cooldown_minutes:
+                        continue
 
+                # Score hesapla — ancak burada yapılabilir
                 computed_score = score(trigger)
+
+                # ── HTF PENALTY — score hesaplandıktan SONRA uygulanır ───────
+                if htf_trend == "neutral":
+                    computed_score = int(computed_score * 0.7)
+
                 if computed_score < self.min_score:
-                    logger.debug("Score too low: %d for %s %s", computed_score, symbol, scenario.name)
-                    self.active_setups[skey] = [s for s in valid_setups if s is not setup]
+                    self.active_setups[key].remove(setup)
                     continue
 
-                try:
-                    atr = calculate_atr(ltf_ctx.candles)
-                    swing_highs = [s.price for s in ltf_ctx.swing_highs]
-                    swing_lows = [s.price for s in ltf_ctx.swing_lows]
-                    plan = self.risk_planner.plan_from_trigger(
-                        trigger, atr=atr, swing_highs=swing_highs, swing_lows=swing_lows
-                    )
-                except Exception as exc:
-                    logger.warning("RiskPlanner failed: %s", exc)
-                    continue
-
+                # Risk planı
+                plan = self.risk_planner.plan_from_trigger(trigger, ltf_ctx)
                 if plan.rr_ratio < self.min_rr_ratio:
-                    logger.debug("R:R too low: %.2f for %s", plan.rr_ratio, symbol)
-                    self.active_setups[skey] = [s for s in valid_setups if s is not setup]
+                    self.active_setups[key].remove(setup)
                     continue
 
-                sess = current_session()
+                # Payload
                 payload = AlertPayload(
-                    scenario_name=scenario.name,
-                    alert_type=scenario.alert_type,
-                    symbol=symbol,
                     pair=symbol.replace("/", ""),
-                    timeframe=ltf_ctx.timeframe,
-                    timeframe_ltf=ltf_ctx.timeframe,
-                    timeframe_htf=htf_ctx.timeframe,
-                    direction=trigger.setup.direction,
+                    type=scenario.alert_type,
+                    direction=setup.direction.upper(),
+                    entry_zone=[trigger.entry_low, trigger.entry_high],
+                    stop=trigger.stop_loss,
+                    targets=[plan.tp1, plan.tp2, plan.tp3],
+                    confidence=round(computed_score / 100, 2),
                     score=computed_score,
-                    confidence_factors=trigger.confidence_factors,
-                    risk_plan=plan,
-                    ict_full_setup=trigger.setup.meta.get("ict_bonus", False),
-                    htf_trend=htf_trend,
-                    session=sess,
                     scenario_detail=scenario.describe(setup, trigger),
+                    htf_trend=htf_trend,
+                    session=current_session(),
                     timestamp=trigger.timestamp,
+                    confidence_factors=trigger.confidence_factors,
                 )
 
-                self._set_cooldown(symbol)
-                self.active_setups[skey] = [s for s in valid_setups if s is not setup]
-
-                logger.info(
-                    "Trigger: %s %s %s | score=%d | session=%s",
-                    scenario.name, symbol, trigger.setup.direction, computed_score, sess,
-                )
-
-                self.signal_store.add(payload)
+                self.alert_cooldowns[symbol] = datetime.now(timezone.utc)
+                self.active_setups[key].remove(setup)
                 produced.append(payload)
 
-                raw = payload.model_dump(mode="json")
-                await self._dispatch_alerts(raw)
+                await self._dispatch_alerts(payload)
                 if self.broadcaster:
-                    msg = {"type": "new_signal", "data": raw}
-                    maybe = self.broadcaster(msg)
+                    maybe = self.broadcaster(payload.model_dump(mode="json"))
                     if asyncio.iscoroutine(maybe):
                         await maybe
 
-        await self._check_active_signals(ltf_ctx)
         return self._merge_confluence(produced)
-
+     
     async def _check_active_signals(self, ltf_ctx: StructureContext) -> None:
         """Check active signals for TP hits, stop loss, and invalidation on each LTF candle."""
         if not ltf_ctx.candles:
