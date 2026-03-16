@@ -1,34 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
 
 from core.candle import Candle
-from core.models import LiquidityZone, Range, VolumeSpike
+from core.models import FairValueGap, LiquidityZone, Range, SwingPoint, VolumeSpike
 
 
 Direction = Literal["bullish", "bearish", "neutral"]
-
-
-# ---------------------------------------------------------------------------
-# Legacy dataclasses (kept for backward-compat with context.py)
-# ---------------------------------------------------------------------------
-
-@dataclass
-class SwingPoint:
-    index: int
-    price: float
-    kind: Literal["high", "low"]
-
-
-@dataclass
-class FairValueGap:
-    direction: Literal["long", "short"]
-    low: float
-    high: float
-    midpoint: float
-    active: bool = True
 
 
 # ---------------------------------------------------------------------------

@@ -198,19 +198,22 @@ class Pipeline:
 
                 # Payload
                 payload = AlertPayload(
+                    scenario_name=setup.scenario_name,
+                    alert_type=setup.alert_type,
+                    symbol=symbol,
                     pair=symbol.replace("/", ""),
-                    type=scenario.alert_type,
-                    direction=setup.direction.upper(),
-                    entry_zone=[trigger.entry_low, trigger.entry_high],
-                    stop=trigger.stop_loss,
-                    targets=[plan.tp1, plan.tp2, plan.tp3],
-                    confidence=round(computed_score / 100, 2),
+                    timeframe=ltf_ctx.timeframe,
+                    timeframe_ltf=ltf_ctx.timeframe,
+                    timeframe_htf=htf_ctx.timeframe,
+                    direction=setup.direction,
                     score=computed_score,
+                    confidence_factors=trigger.confidence_factors,
+                    risk_plan=plan,
+                    ict_full_setup=bool(trigger.setup.meta.get("ict_bonus")),
                     scenario_detail=scenario.describe(setup, trigger),
                     htf_trend=htf_trend,
                     session=current_session(),
                     timestamp=trigger.timestamp,
-                    confidence_factors=trigger.confidence_factors,
                 )
 
                 self.alert_cooldowns[symbol] = datetime.now(timezone.utc)

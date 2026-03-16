@@ -41,16 +41,29 @@ def create_app(engine: SignalEngine) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        live_task: asyncio.Task | None = None
         mode = os.getenv("ENGINE_MODE", "demo").lower()
         if mode == "live":
             from config.settings import load_settings
+            import logging
+            _log = logging.getLogger(__name__)
             cfg, _ = load_settings()
-            asyncio.create_task(
+            live_task = asyncio.create_task(
                 engine.run_live(exchange_id=cfg.exchange.id, sandbox=cfg.exchange.sandbox)
+            )
+            live_task.add_done_callback(
+                lambda t: _log.error("run_live crashed: %s", t.exception())
+                if not t.cancelled() and t.exception() else None
             )
         else:
             await engine.seed_demo_data(bars=200)
         yield
+        if live_task is not None:
+            live_task.cancel()
+            try:
+                await live_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
     app = FastAPI(title="trade-agent", version="2.0.0", lifespan=lifespan)
 
