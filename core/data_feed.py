@@ -19,6 +19,7 @@ from core.context import StructureContext
 logger = logging.getLogger(__name__)
 
 OnCandleClosed = Callable[[StructureContext, Candle], Awaitable[None]]
+OnHistoryReady = Callable[[StructureContext], None]
 
 TIMEFRAME_MS = {
     "1m":   60_000,
@@ -37,12 +38,14 @@ class DataFeed:
         timeframe: str,
         exchange,
         on_candle_closed: OnCandleClosed,
+        on_history_ready: OnHistoryReady | None = None,
     ):
         self.symbol = symbol
         self.timeframe = timeframe
         self.exchange = exchange
         self.context = StructureContext(symbol=symbol, timeframe=timeframe)
         self._on_candle_closed = on_candle_closed
+        self._on_history_ready = on_history_ready
         self._last_ts: int | None = None   # kapanan son mumun timestamp (ms)
 
     async def start(self, history_limit: int = 200) -> None:
@@ -64,13 +67,15 @@ class DataFeed:
                 "History loaded: %s %s  bars=%d",
                 self.symbol, self.timeframe, len(candles) - 1,
             )
+            # engine.contexts'i hemen seed'le — ilk WS tick'ini bekleme
+            if self._on_history_ready is not None:
+                self._on_history_ready(self.context)
         except Exception as exc:
             logger.warning("History load failed %s %s: %s", self.symbol, self.timeframe, exc)
 
     # ── Canlı WebSocket stream ────────────────────────────────────────────
     async def _stream_ws(self) -> None:
         retry_delay = 5.0
-        tf_ms = TIMEFRAME_MS.get(self.timeframe, 60_000)
 
         while True:
             try:
@@ -88,15 +93,22 @@ class DataFeed:
                         # Sadece yeni kapanan mumları işle
                         if self._last_ts is not None and ts_ms <= self._last_ts:
                             continue
-                        # Mum kapandı mı? Bir sonraki mumun zamanı geldi mi?
                         candle = self._parse(raw, is_closed=True)
                         self.context.update(candle)
-                        await self._on_candle_closed(self.context, candle)
+                        # _last_ts'i callback'ten önce güncelle:
+                        # pipeline hatası aynı mumu tekrar işlemez
                         self._last_ts = ts_ms
                         logger.debug(
                             "Candle closed: %s %s  close=%.4f",
                             self.symbol, self.timeframe, candle.close,
                         )
+                        try:
+                            await self._on_candle_closed(self.context, candle)
+                        except Exception as exc:
+                            logger.error(
+                                "Pipeline error %s %s: %s",
+                                self.symbol, self.timeframe, exc,
+                            )
 
                 retry_delay = 5.0   # başarılı bağlantıda reset
 

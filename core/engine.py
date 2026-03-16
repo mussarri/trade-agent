@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
@@ -12,6 +13,8 @@ except Exception:
     ccxt = None
     ccxtpro = None
 
+
+logger = logging.getLogger(__name__)
 
 from alerts.base import BaseAlert
 from core.candle import Candle
@@ -88,6 +91,15 @@ class SignalEngine:
                     merged.setdefault(key, []).extend(setups)
         return merged
 
+    def seed_context(self, ctx: StructureContext) -> None:
+        """History yüklendikten sonra engine.contexts'i hemen seed'le (pipeline çalıştırmadan)."""
+        self.contexts[(ctx.symbol, ctx.timeframe)] = ctx
+        logger.debug(
+            "Context seeded: %s %s  candles=%d swings_h=%d swings_l=%d",
+            ctx.symbol, ctx.timeframe, len(ctx.candles),
+            len(ctx.swing_highs), len(ctx.swing_lows),
+        )
+
     async def on_candle_closed(self, ctx: StructureContext, candle: Candle) -> None:
         self.contexts[(ctx.symbol, ctx.timeframe)] = ctx
         for (h, l), pipeline in self.pipelines.items():
@@ -149,7 +161,11 @@ class SignalEngine:
             for symbol in self.symbols:
                 for tf in all_tfs:
                     tasks.append(asyncio.create_task(
-                        DataFeed(symbol, tf, exchange, self.on_candle_closed).start()
+                        DataFeed(
+                            symbol, tf, exchange,
+                            self.on_candle_closed,
+                            on_history_ready=self.seed_context,
+                        ).start()
                     ))
             await asyncio.gather(*tasks)
         finally:
