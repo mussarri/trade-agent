@@ -1,0 +1,45 @@
+exchange:
+  id: binance
+  sandbox: false
+
+symbols:
+  - BTC/USDT
+  - ETH/USDT
+  - SOL/USDT
+  - XRP/USDT
+  
+
+timeframes:
+  htf: ["1h", "4h"]
+  ltf: ["5m", "15m"]
+
+scoring:
+  min_score: 65
+  min_rr_ratio: 2.5
+
+risk:
+  risk_per_trade_pct: 1.0
+  atr_sl_multiplier: 0.5
+  atr_period: 14
+
+alerts:
+  telegram:
+    enabled: true
+  discord:
+    enabled: false
+  webhook:
+    enabled: false
+  email:
+    enabled: false
+    daily_summary: true
+    summary_hour: 8
+  filters:
+    min_score: 65
+    min_rr_ratio: 2.5
+    cooldown_minutes: 5
+
+scenarios:
+  enabled:
+    - bos_continuation
+    - fvg_retrace
+    - liquidity_sweep

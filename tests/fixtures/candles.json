@@ -1,0 +1,15 @@
+[
+  {"symbol":"BTC/USDT","timeframe":"4h","timestamp":"2026-01-01T00:00:00Z","open":50000,"high":50120,"low":49920,"close":50080,"volume":120,"is_closed":true},
+  {"symbol":"BTC/USDT","timeframe":"4h","timestamp":"2026-01-01T04:00:00Z","open":50080,"high":50210,"low":50010,"close":50190,"volume":140,"is_closed":true},
+  {"symbol":"BTC/USDT","timeframe":"4h","timestamp":"2026-01-01T08:00:00Z","open":50190,"high":50300,"low":50120,"close":50280,"volume":150,"is_closed":true},
+  {"symbol":"BTC/USDT","timeframe":"4h","timestamp":"2026-01-01T12:00:00Z","open":50280,"high":50410,"low":50190,"close":50350,"volume":160,"is_closed":true},
+
+  {"symbol":"BTC/USDT","timeframe":"15m","timestamp":"2026-01-01T12:15:00Z","open":50350,"high":50420,"low":50280,"close":50310,"volume":110,"is_closed":true},
+  {"symbol":"BTC/USDT","timeframe":"15m","timestamp":"2026-01-01T12:30:00Z","open":50310,"high":50350,"low":50210,"close":50240,"volume":105,"is_closed":true},
+  {"symbol":"BTC/USDT","timeframe":"15m","timestamp":"2026-01-01T12:45:00Z","open":50240,"high":50340,"low":50190,"close":50320,"volume":170,"is_closed":true},
+  {"symbol":"BTC/USDT","timeframe":"15m","timestamp":"2026-01-01T13:00:00Z","open":50320,"high":50430,"low":50310,"close":50410,"volume":180,"is_closed":true},
+  {"symbol":"BTC/USDT","timeframe":"15m","timestamp":"2026-01-01T13:15:00Z","open":50410,"high":50520,"low":50390,"close":50480,"volume":190,"is_closed":true},
+  {"symbol":"BTC/USDT","timeframe":"15m","timestamp":"2026-01-01T13:30:00Z","open":50480,"high":50580,"low":50400,"close":50430,"volume":160,"is_closed":true},
+  {"symbol":"BTC/USDT","timeframe":"15m","timestamp":"2026-01-01T13:45:00Z","open":50430,"high":50510,"low":50370,"close":50490,"volume":165,"is_closed":true},
+  {"symbol":"BTC/USDT","timeframe":"15m","timestamp":"2026-01-01T14:00:00Z","open":50490,"high":50620,"low":50470,"close":50590,"volume":210,"is_closed":true}
+]
