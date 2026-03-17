@@ -15,7 +15,7 @@ timeframes:
 
 scoring:
   min_score: 65
-  min_rr_ratio: 2.5
+  min_rr_ratio: 2.0
 
 risk:
   risk_per_trade_pct: 1.0
@@ -35,11 +35,12 @@ alerts:
     summary_hour: 8
   filters:
     min_score: 65
-    min_rr_ratio: 2.5
+    min_rr_ratio: 2.0
     cooldown_minutes: 5
 
 scenarios:
   enabled:
     - bos_continuation
+    - choch_confirmation
     - fvg_retrace
     - liquidity_sweep

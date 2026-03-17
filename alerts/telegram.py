@@ -152,9 +152,10 @@ class TelegramAlert(BaseAlert):
         conditions = payload.get("conditions", {})
         cond_str = ", ".join(k for k, v in conditions.items() if v) or "—"
         f = payload.get("confidence_factors", {})
+        fvg_ok = f.get("fvg_presence", f.get("fvg_or_ob_presence"))
         factors = (
             f"{'✅' if f.get('htf_alignment')         else '❌'} HTF   "
-            f"{'✅' if f.get('fvg_or_ob_presence')    else '❌'} FVG\n"
+            f"{'✅' if fvg_ok                          else '❌'} FVG\n"
             f"{'✅' if f.get('volume_confirmation')   else '❌'} Vol   "
             f"{'✅' if f.get('liquidity_confluence')  else '❌'} Liq\n"
             f"{'✅' if f.get('session_time')          else '❌'} Session"
@@ -181,9 +182,10 @@ class TelegramAlert(BaseAlert):
         scenario_detail = payload.get("scenario_detail", "")
 
         f = payload.get("confidence_factors", {})
+        fvg_ok = f.get("fvg_presence", f.get("fvg_or_ob_presence"))
         factors = (
             f"{'✅' if f.get('htf_alignment')         else '❌'} HTF Trend    "
-            f"{'✅' if f.get('fvg_or_ob_presence')    else '❌'} FVG/OB\n"
+            f"{'✅' if fvg_ok                          else '❌'} FVG\n"
             f"{'✅' if f.get('volume_confirmation')   else '❌'} Volume       "
             f"{'✅' if f.get('liquidity_confluence')  else '❌'} Liquidity\n"
             f"{'✅' if f.get('session_time')          else '❌'} Session"

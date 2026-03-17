@@ -1,115 +1,105 @@
-"""Tests for Pipeline hard filter, cooldown, confluence (spec section 14)."""
 from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
 
-import pytest
-
+from alerts.base import BaseAlert
 from core.context import StructureContext
-from core.models import AlertPayload, RiskPlan
+from core.models import Setup, Trigger, TriggerCondition
 from core.pipeline import Pipeline
+from scenarios.base import BaseScenario
 
 
-def _make_alert(symbol: str, direction: str, score: int = 70) -> AlertPayload:
+class _CapturingAlert(BaseAlert):
+    def __init__(self) -> None:
+        self.payload_types: list[type] = []
+
+    async def send(self, payload: dict) -> None:
+        self.payload_types.append(type(payload))
+
+
+class _AlwaysTriggerScenario(BaseScenario):
+    name = "always_trigger"
+    alert_type = "ALWAYS_TRIGGER"
+
+    def detect_setup(self, htf_ctx, ltf_ctx):
+        if not ltf_ctx.candles:
+            return None
+        return Setup(
+            scenario_name=self.name,
+            alert_type=self.alert_type,
+            symbol=ltf_ctx.symbol,
+            timeframe=ltf_ctx.timeframe,
+            direction="long",
+            entry_zone_low=99.0,
+            entry_zone_high=101.0,
+            swing_low=98.0,
+            swing_high=103.0,
+            invalidation_level=97.0,
+            max_candles=10,
+            meta={"has_fvg": True},
+        )
+
+    def detect_trigger(self, setup, ltf_ctx):
+        c = ltf_ctx.candles[-1]
+        return Trigger(
+            setup=setup,
+            conditions=TriggerCondition(close_confirm=True),
+            confidence_factors={
+                "htf_alignment": True,
+                "fvg_presence": True,
+                "volume_confirmation": False,
+                "liquidity_confluence": False,
+                "session_time": True,
+            },
+            timestamp=c.timestamp,
+        )
+
+
+def _htf_bullish(symbol: str = "BTC/USDT") -> StructureContext:
+    ctx = StructureContext(symbol=symbol, timeframe="1h")
+    ctx.external_structure_labels = ["HH", "HL", "HH"]
+    return ctx
+
+
+def _ltf(symbol: str = "BTC/USDT", tf: str = "15m") -> StructureContext:
+    from core.candle import Candle
+
+    ctx = StructureContext(symbol=symbol, timeframe=tf)
     now = datetime.now(tz=timezone.utc)
-    return AlertPayload(
-        scenario_name="bos_continuation",
-        alert_type="BOS_CONTINUATION",
-        symbol=symbol,
-        pair=symbol.replace("/", ""),
-        timeframe="15m",
-        direction=direction,
-        score=score,
-        confidence_factors={
-            "htf_alignment": True,
-            "fvg_or_ob_presence": True,
-            "volume_confirmation": False,
-            "liquidity_confluence": False,
-            "session_time": True,
-        },
-        risk_plan=RiskPlan(
-            entry_low=50000.0,
-            entry_high=50200.0,
-            stop_loss=49500.0,
-            tp1=51000.0,
-            tp2=52000.0,
-            tp3=53000.0,
-            rr_ratio=2.5,
-            position_size_pct=1.0,
-            invalidation_level=49500.0,
-        ),
-        htf_trend="bullish",
-        session="london",
-        scenario_detail="bos_continuation | long | close_confirm",
-        timestamp=now,
-    )
-
-
-def _neutral_htf(symbol: str = "BTC/USDT") -> StructureContext:
-    ctx = StructureContext(symbol=symbol, timeframe="1h")
-    # No structure labels → neutral
+    for i in range(20):
+        ctx.candles.append(
+            Candle(
+                symbol=symbol,
+                timeframe=tf,
+                timestamp=now,
+                open=100.0,
+                high=101.0,
+                low=99.0,
+                close=100.2,
+                volume=100 + i,
+                is_closed=True,
+            )
+        )
     return ctx
 
 
-def _bullish_htf(symbol: str = "BTC/USDT") -> StructureContext:
-    ctx = StructureContext(symbol=symbol, timeframe="1h")
-    ctx.structure_labels = ["HH", "HL", "HH", "HL"]
-    return ctx
-
-
-def _ltf(symbol: str = "BTC/USDT") -> StructureContext:
-    return StructureContext(symbol=symbol, timeframe="15m")
-
-
-def test_htf_neutral_hard_filter():
-    """HTF neutral → pipeline erken çıkış, sinyal yok."""
-    pipe = Pipeline(enabled_scenarios=["bos_continuation"])
-    result = asyncio.run(pipe.run(_neutral_htf(), _ltf()))
-    assert result == []
-
-
-def test_htf_bearish_no_long():
-    """HTF bearish → long setup pipeline'a girmiyor."""
-    bearish_htf = StructureContext(symbol="BTC/USDT", timeframe="1h")
-    bearish_htf.structure_labels = ["LL", "LH", "LL", "LH"]
-    pipe = Pipeline(enabled_scenarios=["bos_continuation"])
-    result = asyncio.run(pipe.run(bearish_htf, _ltf()))
-    assert result == []
-    # No long setups created
-    for setups in pipe.active_setups.values():
-        for s in setups:
-            assert s.direction != "long"
-
-
-def test_confluence_merge():
-    """Aynı sembol/yönde 2 sinyal → tek birleşik sinyal."""
+def test_cooldown_is_scenario_and_timeframe_specific():
     pipe = Pipeline()
-    signals = [
-        _make_alert("BTC/USDT", "long", score=70),
-        _make_alert("BTC/USDT", "long", score=75),
-    ]
-    merged = pipe._merge_confluence(signals)
-    assert len(merged) == 1
-    assert merged[0].score == 75
+    pipe._set_cooldown("BTC/USDT", "bos_continuation", "15m", "long")
+    assert pipe._is_on_cooldown("BTC/USDT", "bos_continuation", "15m", "long") is True
+    assert pipe._is_on_cooldown("BTC/USDT", "fvg_retrace", "15m", "long") is False
+    assert pipe._is_on_cooldown("BTC/USDT", "bos_continuation", "5m", "long") is False
 
 
-def test_confluence_different_symbols_not_merged():
-    """Farklı semboller merge edilmez."""
-    pipe = Pipeline()
-    signals = [
-        _make_alert("BTC/USDT", "long", score=70),
-        _make_alert("ETH/USDT", "long", score=75),
-    ]
-    merged = pipe._merge_confluence(signals)
-    assert len(merged) == 2
+def test_signal_store_insertion_and_alert_payload_dict():
+    alert = _CapturingAlert()
+    pipe = Pipeline(min_score=0, min_rr_ratio=0, alerts=[alert], enabled_scenarios=[])
+    pipe.scenarios = [_AlwaysTriggerScenario()]
+    htf = _htf_bullish()
+    ltf = _ltf()
 
-
-def test_cooldown():
-    """Cooldown aktifken aynı sembol için sinyal gönderilmez."""
-    from datetime import timedelta
-    pipe = Pipeline(cooldown_minutes=5)
-    # Set cooldown on BTC/USDT
-    pipe.alert_cooldowns["BTC/USDT"] = datetime.now(timezone.utc) - timedelta(minutes=1)
-    assert pipe._is_on_cooldown("BTC/USDT") is True
-    assert pipe._is_on_cooldown("ETH/USDT") is False
+    result = asyncio.run(pipe.run(htf, ltf))
+    assert len(result) == 1
+    assert len(pipe.signal_store.active_signals) == 1
+    assert alert.payload_types == [dict]

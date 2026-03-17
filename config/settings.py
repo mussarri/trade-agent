@@ -20,7 +20,7 @@ class TimeframesConfig(BaseModel):
 
 class ScoringConfig(BaseModel):
     min_score: int = 65
-    min_rr_ratio: float = 2.5
+    min_rr_ratio: float = 2.0
 
 
 class RiskConfig(BaseModel):
@@ -49,7 +49,7 @@ class WebhookConfig(BaseModel):
 
 class AlertFiltersConfig(BaseModel):
     min_score: int = 65
-    min_rr_ratio: float = 2.5
+    min_rr_ratio: float = 2.0
     cooldown_minutes: int = 5
 
 
@@ -65,6 +65,7 @@ class ScenarioConfig(BaseModel):
     enabled: list[str] = Field(
         default_factory=lambda: [
             "bos_continuation",
+            "choch_confirmation",
             "fvg_retrace",
             "liquidity_sweep",
         ]
@@ -96,7 +97,7 @@ class EnvSettings(BaseSettings):
     webhook_secret: str = ""
 
     alert_min_score: int = 65
-    alert_min_rr: float = 2.5
+    alert_min_rr: float = 2.0
     alert_cooldown_minutes: int = 5
 
     email_smtp_host: str = ""

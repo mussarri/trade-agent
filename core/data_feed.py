@@ -98,7 +98,7 @@ class DataFeed:
                         # _last_ts'i callback'ten önce güncelle:
                         # pipeline hatası aynı mumu tekrar işlemez
                         self._last_ts = ts_ms
-                        logger.debug(
+                        logger.info(
                             "Candle closed: %s %s  close=%.4f",
                             self.symbol, self.timeframe, candle.close,
                         )

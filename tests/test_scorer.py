@@ -32,14 +32,14 @@ def test_min_score_default():
 
 
 def test_min_rr_default():
-    assert MIN_RR_RATIO == 2.5
+    assert MIN_RR_RATIO == 2.0
 
 
 def test_score_all_true():
     """5 faktörün hepsi True → 100."""
     t = _make_trigger({
         "htf_alignment": True,
-        "fvg_or_ob_presence": True,
+        "fvg_presence": True,
         "volume_confirmation": True,
         "liquidity_confluence": True,
         "session_time": True,
@@ -51,7 +51,7 @@ def test_score_htf_only():
     """Sadece htf_alignment=True → 30."""
     t = _make_trigger({
         "htf_alignment": True,
-        "fvg_or_ob_presence": False,
+        "fvg_presence": False,
         "volume_confirmation": False,
         "liquidity_confluence": False,
         "session_time": False,
@@ -60,10 +60,10 @@ def test_score_htf_only():
 
 
 def test_score_htf_plus_fvg():
-    """htf_alignment(30) + fvg_or_ob_presence(25) = 55."""
+    """htf_alignment(30) + fvg_presence(25) = 55."""
     t = _make_trigger({
         "htf_alignment": True,
-        "fvg_or_ob_presence": True,
+        "fvg_presence": True,
         "volume_confirmation": False,
         "liquidity_confluence": False,
         "session_time": False,
@@ -75,7 +75,7 @@ def test_score_ict_bonus_via_meta():
     """ICT bonus meta'dan alınıyor → +15, capped at 100."""
     t = _make_trigger({
         "htf_alignment": True,
-        "fvg_or_ob_presence": True,
+        "fvg_presence": True,
         "volume_confirmation": True,
         "liquidity_confluence": True,
         "session_time": True,
@@ -88,7 +88,7 @@ def test_score_ict_bonus_via_param():
     """ICT bonus parametre ile de çalışıyor."""
     t = _make_trigger({
         "htf_alignment": True,
-        "fvg_or_ob_presence": True,
+        "fvg_presence": True,
         "volume_confirmation": False,
         "liquidity_confluence": False,
         "session_time": False,

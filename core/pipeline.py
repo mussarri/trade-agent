@@ -90,20 +90,21 @@ class Pipeline:
 
         # Two-stage state: "scenario:symbol" → list[Setup]
         self.active_setups: dict[str, list[Setup]] = {}
-        # Cooldown: symbol → last alert datetime (per-symbol, not per-scenario)
-        self.alert_cooldowns: dict[str, datetime] = {}
+        # Cooldown: (symbol, scenario_name, timeframe, direction) → last alert datetime
+        self.alert_cooldowns: dict[tuple, datetime] = {}
 
     def _setup_key(self, symbol: str, scenario_name: str) -> str:
         return f"{scenario_name}:{symbol}"
 
-    def _is_on_cooldown(self, symbol: str) -> bool:
-        last = self.alert_cooldowns.get(symbol)
+    def _is_on_cooldown(self, symbol: str, scenario_name: str, timeframe: str, direction: str) -> bool:
+        key = (symbol, scenario_name, timeframe, direction)
+        last = self.alert_cooldowns.get(key)
         if last is None:
             return False
         return datetime.now(timezone.utc) - last < timedelta(minutes=self.cooldown_minutes)
 
-    def _set_cooldown(self, symbol: str) -> None:
-        self.alert_cooldowns[symbol] = datetime.now(timezone.utc)
+    def _set_cooldown(self, symbol: str, scenario_name: str, timeframe: str, direction: str) -> None:
+        self.alert_cooldowns[(symbol, scenario_name, timeframe, direction)] = datetime.now(timezone.utc)
 
     def _merge_confluence(self, signals: list[AlertPayload]) -> list[AlertPayload]:
         """Aynı sembol + aynı yönde birden fazla sinyal → tek birleşik sinyal."""
@@ -137,6 +138,7 @@ class Pipeline:
         symbol = ltf_ctx.symbol
         htf_trend = htf_ctx.trend
         produced = []
+        await self._check_active_signals(ltf_ctx)
 
         for scenario in self.scenarios:
             key = f"{scenario.name}:{symbol}"
@@ -164,6 +166,19 @@ class Pipeline:
                     if trend_ok:
                         self.active_setups[key].append(new_setup)
                         logger.info("Setup: %s %s %s", scenario.name, symbol, new_setup.direction)
+                        await self._dispatch_setup_alerts({
+                            "scenario_name": new_setup.scenario_name,
+                            "alert_type": new_setup.alert_type,
+                            "symbol": symbol,
+                            "pair": symbol.replace("/", ""),
+                            "timeframe": new_setup.timeframe,
+                            "direction": new_setup.direction,
+                            "entry_zone_low": new_setup.entry_zone_low,
+                            "entry_zone_high": new_setup.entry_zone_high,
+                            "invalidation_level": new_setup.invalidation_level,
+                            "max_candles": new_setup.max_candles,
+                            "htf_trend": htf_trend,
+                        })
 
             # 4. Trigger
             for setup in self.active_setups[key][:]:
@@ -172,11 +187,8 @@ class Pipeline:
                     continue
 
                 # Cooldown
-                last_alert = self.alert_cooldowns.get(symbol)
-                if last_alert:
-                    elapsed_min = (datetime.now(timezone.utc) - last_alert).total_seconds() / 60
-                    if elapsed_min < self.cooldown_minutes:
-                        continue
+                if self._is_on_cooldown(symbol, scenario.name, ltf_ctx.timeframe, setup.direction):
+                    continue
 
                 # Score hesapla — ancak burada yapılabilir
                 computed_score = score(trigger)
@@ -191,7 +203,14 @@ class Pipeline:
 
                 # Risk planı
                 atr = calculate_atr(ltf_ctx.candles) if ltf_ctx.candles else 0.0
-                plan = self.risk_planner.plan_from_trigger(trigger, atr)
+                swing_highs = [x.price for x in ltf_ctx.swing_highs[-10:]]
+                swing_lows = [x.price for x in ltf_ctx.swing_lows[-10:]]
+                plan = self.risk_planner.plan_from_trigger(
+                    trigger,
+                    atr,
+                    swing_highs=swing_highs,
+                    swing_lows=swing_lows,
+                )
                 if plan.rr_ratio < self.min_rr_ratio:
                     self.active_setups[key].remove(setup)
                     continue
@@ -216,13 +235,17 @@ class Pipeline:
                     timestamp=trigger.timestamp,
                 )
 
-                self.alert_cooldowns[symbol] = datetime.now(timezone.utc)
+                self._set_cooldown(symbol, scenario.name, ltf_ctx.timeframe, setup.direction)
                 self.active_setups[key].remove(setup)
                 produced.append(payload)
+                self.signal_store.add(payload)
 
-                await self._dispatch_alerts(payload)
+                payload_dict = payload.model_dump(mode="json")
+                payload_dict["entry_ready"] = True
+                await self._dispatch_trigger_alerts(payload_dict)
+                await self._dispatch_alerts(payload_dict)
                 if self.broadcaster:
-                    maybe = self.broadcaster(payload.model_dump(mode="json"))
+                    maybe = self.broadcaster(payload_dict)
                     if asyncio.iscoroutine(maybe):
                         await maybe
 

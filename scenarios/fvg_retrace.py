@@ -18,6 +18,8 @@ class FvgRetraceScenario(BaseScenario):
 
     def detect_setup(self, htf_ctx, ltf_ctx) -> Setup | None:
         htf_trend = htf_ctx.trend
+        if htf_trend == "neutral":
+            return None
         direction = "long" if htf_trend == "bullish" else "short"
 
         # HTF trend yönüyle aynı aktif FVG
@@ -39,8 +41,7 @@ class FvgRetraceScenario(BaseScenario):
             body = abs(disp_candle.close - disp_candle.open)
             if atr > 0 and body >= atr * 1.5:
                 has_displacement = True
-            elif ltf_ctx.volume_spikes:
-                # Son spike bu bölgede mi
+            elif ltf_ctx.volume_spikes and ltf_ctx.volume_spikes[-1].timestamp == disp_candle.timestamp:
                 has_displacement = True
 
         if not has_displacement:
@@ -51,6 +52,10 @@ class FvgRetraceScenario(BaseScenario):
             invalidation = matching_fvg.low - atr * 0.3
         else:
             invalidation = matching_fvg.high + atr * 0.3
+
+        current_price = ltf_ctx.last_close
+        if current_price and abs(current_price - matching_fvg.high) / current_price > 0.02:
+            return None
 
         swing_low = ltf_ctx.swing_lows[-1].price if ltf_ctx.swing_lows else matching_fvg.low * 0.99
         swing_high = ltf_ctx.swing_highs[-1].price if ltf_ctx.swing_highs else matching_fvg.high * 1.01
@@ -70,6 +75,7 @@ class FvgRetraceScenario(BaseScenario):
             meta={
                 "fvg_midpoint": matching_fvg.midpoint,
                 "has_displacement": has_displacement,
+                "zone_touched": False,
             },
         )
 
@@ -77,24 +83,28 @@ class FvgRetraceScenario(BaseScenario):
         if not ltf_ctx.candles:
             return None
         c = ltf_ctx.candles[-1]
+        prev = ltf_ctx.candles[-2] if len(ltf_ctx.candles) >= 2 else None
 
         close_confirm = False
         sweep_reversal = False
+        fvg_mid = (setup.entry_zone_high + setup.entry_zone_low) / 2
+        zone_width = max(setup.entry_zone_high - setup.entry_zone_low, 1e-9)
 
         if setup.direction == "long":
-            # Option A — price retraced into FVG and closed inside
-            if c.low <= setup.entry_zone_high and c.close >= setup.entry_zone_low:
+            # First-touch transition: outside above -> inside with >=50% retrace depth.
+            was_outside = bool(prev and prev.close > setup.entry_zone_high)
+            depth = max(0.0, min(1.0, (setup.entry_zone_high - c.low) / zone_width))
+            if was_outside and setup.entry_zone_low <= c.close <= setup.entry_zone_high and depth >= 0.5 and c.close >= fvg_mid:
                 close_confirm = True
-            # Option B — wick below FVG low + close recovered
-            if c.low < setup.entry_zone_low and c.close > setup.entry_zone_low:
+            if c.low < setup.entry_zone_low and c.close > fvg_mid and c.close > c.open:
                 sweep_reversal = True
                 close_confirm = False
         else:
-            # Option A
-            if c.high >= setup.entry_zone_low and c.close <= setup.entry_zone_high:
+            was_outside = bool(prev and prev.close < setup.entry_zone_low)
+            depth = max(0.0, min(1.0, (c.high - setup.entry_zone_low) / zone_width))
+            if was_outside and setup.entry_zone_low <= c.close <= setup.entry_zone_high and depth >= 0.5 and c.close <= fvg_mid:
                 close_confirm = True
-            # Option B
-            if c.high > setup.entry_zone_high and c.close < setup.entry_zone_high:
+            if c.high > setup.entry_zone_high and c.close < fvg_mid and c.close < c.open:
                 sweep_reversal = True
                 close_confirm = False
 
@@ -114,7 +124,7 @@ class FvgRetraceScenario(BaseScenario):
         session = current_session()
         confidence_factors = {
             "htf_alignment":        True,
-            "fvg_or_ob_presence":   True,
+            "fvg_presence":         True,
             "volume_confirmation":  vol_confirm,
             "liquidity_confluence": swept_liq,
             "session_time":         session in {"london", "new_york", "overlap"},

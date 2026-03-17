@@ -16,17 +16,31 @@ class BosContinuationScenario(BaseScenario):
     alert_type = "BOS_CONTINUATION"
 
     def detect_setup(self, htf_ctx, ltf_ctx) -> Setup | None:
-        # HTF trend — pipeline already guarantees non-neutral, but we need direction
         htf_trend = htf_ctx.trend
-        direction = "long" if htf_trend == "bullish" else "short"
-
-        # LTF must have a recent BOS in the same direction
-        if not ltf_ctx.last_bos:
-            return None
-        if ltf_ctx.last_bos.direction != htf_trend:
+        if htf_trend == "neutral":
             return None
 
-        bos_level = ltf_ctx.last_bos.level
+        # Continuation quality gate: external BOS + displacement required
+        ext_bos = ltf_ctx.last_external_bos
+        if not ext_bos:
+            return None
+        if not ext_bos.displacement:
+            return None
+
+        ltf_bos_dir = ext_bos.direction  # "bullish" | "bearish"
+
+        if htf_trend == "bullish":
+            if ltf_bos_dir != "bullish":
+                return None
+            direction = "long"
+        elif htf_trend == "bearish":
+            if ltf_bos_dir != "bearish":
+                return None
+            direction = "short"
+        else:
+            return None
+
+        bos_level = ext_bos.level
 
         # Pullback bölgesi
         if direction == "long":
@@ -49,8 +63,15 @@ class BosContinuationScenario(BaseScenario):
                     watch_high = fvg.high
                     has_fvg = True
                     break
+        # A continuation setup without imbalance context is usually low quality.
+        if not has_fvg:
+            return None
 
         if watch_low >= watch_high:
+            return None
+
+        current_price = ltf_ctx.last_close
+        if current_price and abs(current_price - watch_high) / current_price > 0.02:
             return None
 
         swing_low_ref = ltf_ctx.swing_lows[-1].price if ltf_ctx.swing_lows else watch_low * 0.99
@@ -71,6 +92,7 @@ class BosContinuationScenario(BaseScenario):
             meta={
                 "bos_level": bos_level,
                 "has_fvg": has_fvg,
+                "bos_kind": ext_bos.structure_kind,
             },
         )
 
@@ -115,7 +137,7 @@ class BosContinuationScenario(BaseScenario):
         session = current_session()
         confidence_factors = {
             "htf_alignment":        True,
-            "fvg_or_ob_presence":   setup.meta.get("has_fvg", False),
+            "fvg_presence":         setup.meta.get("has_fvg", False),
             "volume_confirmation":  vol_spike,
             "liquidity_confluence": liq_in_zone,
             "session_time":         session in {"london", "new_york", "overlap"},

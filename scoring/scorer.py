@@ -4,7 +4,8 @@ from core.models import Trigger
 
 WEIGHTS = {
     "htf_alignment":          30,   # kritik
-    "fvg_or_ob_presence":     25,   # entry kalitesi
+    "fvg_presence":           25,   # entry kalitesi
+    "fvg_or_ob_presence":      0,   # deprecated (OB not implemented)
     "volume_confirmation":    20,   # momentum teyidi
     "liquidity_confluence":   15,   # güçlendirici
     "session_time":           10,   # timing
@@ -13,7 +14,7 @@ WEIGHTS = {
 
 ICT_FULL_SETUP_BONUS = 15
 MIN_SCORE = 65
-MIN_RR_RATIO = 2.5
+MIN_RR_RATIO = 2.0
 
 
 def score(trigger: Trigger, ict_bonus: int = 0) -> int:

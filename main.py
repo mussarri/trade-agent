@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import logging
 import uvicorn
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 from api.server import create_app
 from config.settings import load_settings
 from core.engine import SignalEngine

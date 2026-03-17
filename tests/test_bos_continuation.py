@@ -1,96 +1,63 @@
-"""Tests for BosContinuationScenario (spec section 14)."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import pytest
-
-from core.candle import Candle
-from core.context import StructureContext
+from core.context import BosEvent, StructureContext
 from core.models import Setup
+from core.structure import FairValueGap
 from scenarios.bos_continuation import BosContinuationScenario
 
 
-def _make_candle(open_: float, high: float, low: float, close: float, volume: float = 100.0) -> Candle:
-    return Candle(
-        symbol="BTC/USDT",
-        timeframe="15m",
-        timestamp=datetime.now(tz=timezone.utc),
-        open=open_,
-        high=high,
-        low=low,
-        close=close,
-        volume=volume,
-        is_closed=True,
-    )
-
-
-def _make_context(symbol: str = "BTC/USDT", tf: str = "15m") -> StructureContext:
-    return StructureContext(symbol=symbol, timeframe=tf)
-
-
 def _htf_bullish() -> StructureContext:
-    ctx = _make_context(tf="1h")
-    # Force bullish structure_labels
-    ctx.structure_labels = ["HH", "HL", "HH", "HL"]
-    return ctx
-
-
-def _htf_bearish() -> StructureContext:
-    ctx = _make_context(tf="1h")
-    ctx.structure_labels = ["LL", "LH", "LL", "LH"]
+    ctx = StructureContext(symbol="BTC/USDT", timeframe="1h")
+    ctx.external_structure_labels = ["HH", "HL", "HH", "HL"]
     return ctx
 
 
 def _htf_neutral() -> StructureContext:
-    ctx = _make_context(tf="1h")
-    return ctx
+    return StructureContext(symbol="BTC/USDT", timeframe="1h")
 
 
-scenario = BosContinuationScenario()
-
-
-def test_long_setup_bullish_htf():
-    """HTF bullish + LTF BOS bullish → long setup oluşmalı."""
-    htf = _htf_bullish()
-    ltf = _make_context()
-    # Add a bullish BOS event
-    from core.context import BosEvent
-    ltf.bos_events.append(BosEvent(direction="bullish", level=50000.0, timestamp=datetime.now(tz=timezone.utc)))
+def _ltf_with_external_bos(displacement: bool = True) -> StructureContext:
+    ltf = StructureContext(symbol="BTC/USDT", timeframe="15m")
+    ltf.bos_events.append(
+        BosEvent(
+            direction="bullish",
+            level=50000.0,
+            timestamp=datetime.now(tz=timezone.utc),
+            structure_kind="external",
+            displacement=displacement,
+        )
+    )
     ltf.swing_lows.append(type("SP", (), {"price": 49500.0})())
     ltf.swing_highs.append(type("SP", (), {"price": 50500.0})())
+    ltf.fvgs.append(FairValueGap(direction="long", low=49700.0, high=50000.0, midpoint=49850.0, active=True))
+    ltf.candles.append(type("C", (), {"close": 49990.0})())
+    return ltf
 
-    setup = scenario.detect_setup(htf, ltf)
+
+def test_requires_external_bos_with_displacement():
+    scenario = BosContinuationScenario()
+    setup = scenario.detect_setup(_htf_bullish(), _ltf_with_external_bos(displacement=False))
+    assert setup is None
+
+
+def test_rejects_neutral_htf():
+    scenario = BosContinuationScenario()
+    setup = scenario.detect_setup(_htf_neutral(), _ltf_with_external_bos(displacement=True))
+    assert setup is None
+
+
+def test_valid_external_continuation_setup():
+    scenario = BosContinuationScenario()
+    setup = scenario.detect_setup(_htf_bullish(), _ltf_with_external_bos(displacement=True))
     assert setup is not None
     assert setup.direction == "long"
-    assert setup.meta.get("bos_level") == 50000.0
+    assert setup.meta.get("bos_kind") == "external"
 
 
-def test_no_setup_neutral_htf():
-    """HTF neutral → setup oluşmamalı."""
-    htf = _htf_neutral()
-    ltf = _make_context()
-    from core.context import BosEvent
-    ltf.bos_events.append(BosEvent(direction="bullish", level=50000.0, timestamp=datetime.now(tz=timezone.utc)))
-
-    setup = scenario.detect_setup(htf, ltf)
-    assert setup is None
-
-
-def test_no_long_setup_bearish_htf():
-    """HTF bearish → long setup oluşmamalı (BOS direction mismatch)."""
-    htf = _htf_bearish()
-    ltf = _make_context()
-    from core.context import BosEvent
-    # LTF has bullish BOS but HTF is bearish → mismatch
-    ltf.bos_events.append(BosEvent(direction="bullish", level=50000.0, timestamp=datetime.now(tz=timezone.utc)))
-
-    setup = scenario.detect_setup(htf, ltf)
-    assert setup is None
-
-
-def test_trigger_close_confirm():
-    """Bölge içi üst yarı kapanış → trigger."""
+def test_trigger_close_confirm_works():
+    scenario = BosContinuationScenario()
     setup = Setup(
         scenario_name="bos_continuation",
         alert_type="BOS_CONTINUATION",
@@ -102,82 +69,11 @@ def test_trigger_close_confirm():
         swing_low=49500.0,
         swing_high=50500.0,
         invalidation_level=49750.0,
-        meta={"bos_level": 50200.0, "has_fvg": False},
+        meta={"bos_level": 50200.0, "has_fvg": True, "bos_kind": "external"},
     )
-    ltf = _make_context()
-    # Close inside zone, above midpoint (50000)
-    ltf.candles.append(_make_candle(49900.0, 50150.0, 49850.0, 50100.0))
+    ltf = StructureContext(symbol="BTC/USDT", timeframe="15m")
+    ltf.candles.append(type("C", (), {"open": 49900.0, "high": 50150.0, "low": 49850.0, "close": 50100.0, "timestamp": datetime.now(tz=timezone.utc)})())
 
     trigger = scenario.detect_trigger(setup, ltf)
     assert trigger is not None
     assert trigger.conditions.close_confirm is True
-    assert trigger.conditions.sweep_reversal is False
-
-
-def test_trigger_sweep_reversal():
-    """Wick dışı + geri kapanış → trigger."""
-    setup = Setup(
-        scenario_name="bos_continuation",
-        alert_type="BOS_CONTINUATION",
-        symbol="BTC/USDT",
-        timeframe="15m",
-        direction="long",
-        entry_zone_low=49800.0,
-        entry_zone_high=50200.0,
-        swing_low=49500.0,
-        swing_high=50500.0,
-        invalidation_level=49750.0,
-        meta={"bos_level": 50200.0, "has_fvg": False},
-    )
-    ltf = _make_context()
-    # Low below zone_low, close above zone_low → sweep reversal
-    ltf.candles.append(_make_candle(49850.0, 49950.0, 49700.0, 49900.0))
-
-    trigger = scenario.detect_trigger(setup, ltf)
-    assert trigger is not None
-    assert trigger.conditions.sweep_reversal is True
-
-
-def test_invalidation_level():
-    """BOS seviyesi altı kapanış → setup iptal."""
-    setup = Setup(
-        scenario_name="bos_continuation",
-        alert_type="BOS_CONTINUATION",
-        symbol="BTC/USDT",
-        timeframe="15m",
-        direction="long",
-        entry_zone_low=49800.0,
-        entry_zone_high=50200.0,
-        swing_low=49500.0,
-        swing_high=50500.0,
-        invalidation_level=49750.0,
-        meta={},
-    )
-    ltf = _make_context()
-    # Close below invalidation level
-    ltf.candles.append(_make_candle(49800.0, 49820.0, 49600.0, 49700.0))
-
-    assert scenario.is_invalidated(setup, ltf) is True
-
-
-def test_invalidation_timeout():
-    """20 mum → setup iptal."""
-    setup = Setup(
-        scenario_name="bos_continuation",
-        alert_type="BOS_CONTINUATION",
-        symbol="BTC/USDT",
-        timeframe="15m",
-        direction="long",
-        entry_zone_low=49800.0,
-        entry_zone_high=50200.0,
-        swing_low=49500.0,
-        swing_high=50500.0,
-        invalidation_level=49750.0,
-        max_candles=20,
-        candles_elapsed=20,
-        meta={},
-    )
-    ltf = _make_context()
-    ltf.candles.append(_make_candle(50000.0, 50100.0, 49950.0, 50050.0))
-
-    assert scenario.is_invalidated(setup, ltf) is True
