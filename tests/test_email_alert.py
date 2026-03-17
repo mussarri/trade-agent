@@ -26,8 +26,8 @@ def _make_payload(
     session: str = "london",
 ) -> dict:
     return {
-        "scenario_name": "bos_continuation",
-        "alert_type": "BOS_CONTINUATION",
+        "scenario_name": "htf_pullback_continuation",
+        "alert_type": "ENTRY_CONFIRMED",
         "symbol": symbol,
         "pair": symbol.replace("/", ""),
         "timeframe": "15m",
@@ -35,7 +35,7 @@ def _make_payload(
         "score": score,
         "htf_trend": htf_trend,
         "session": session,
-        "scenario_detail": "bos_continuation | long | close_confirm",
+        "scenario_detail": "htf_pullback_continuation | long | confirmed",
         "ict_full_setup": False,
         "confidence_factors": {
             "htf_alignment": True,

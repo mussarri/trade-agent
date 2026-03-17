@@ -10,8 +10,8 @@ symbols:
   
 
 timeframes:
-  htf: ["1h", "4h"]
-  ltf: ["5m", "15m"]
+  htf: ["1h"]
+  ltf: ["5m"]
 
 scoring:
   min_score: 65
@@ -39,8 +39,4 @@ alerts:
     cooldown_minutes: 5
 
 scenarios:
-  enabled:
-    - bos_continuation
-    - choch_confirmation
-    - fvg_retrace
-    - liquidity_sweep
+  enabled: ["htf_pullback_continuation"]

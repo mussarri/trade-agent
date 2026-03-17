@@ -13,14 +13,22 @@ from scenarios.base import BaseScenario
 class _CapturingAlert(BaseAlert):
     def __init__(self) -> None:
         self.payload_types: list[type] = []
+        self.setup_count = 0
+        self.trigger_count = 0
 
     async def send(self, payload: dict) -> None:
         self.payload_types.append(type(payload))
 
+    async def send_setup(self, payload: dict) -> None:
+        self.setup_count += 1
+
+    async def send_trigger(self, payload: dict) -> None:
+        self.trigger_count += 1
+
 
 class _AlwaysTriggerScenario(BaseScenario):
-    name = "always_trigger"
-    alert_type = "ALWAYS_TRIGGER"
+    name = "htf_pullback_continuation"
+    alert_type = "SETUP_DETECTED"
 
     def detect_setup(self, htf_ctx, ltf_ctx):
         if not ltf_ctx.candles:
@@ -37,7 +45,11 @@ class _AlwaysTriggerScenario(BaseScenario):
             swing_high=103.0,
             invalidation_level=97.0,
             max_candles=10,
-            meta={"has_fvg": True},
+            meta={
+                "trend": "bullish",
+                "zone_id": "zone-1",
+                "setup_id": f"{ltf_ctx.symbol}:zone-1:bullish",
+            },
         )
 
     def detect_trigger(self, setup, ltf_ctx):
@@ -86,10 +98,10 @@ def _ltf(symbol: str = "BTC/USDT", tf: str = "15m") -> StructureContext:
 
 def test_cooldown_is_scenario_and_timeframe_specific():
     pipe = Pipeline()
-    pipe._set_cooldown("BTC/USDT", "bos_continuation", "15m", "long")
-    assert pipe._is_on_cooldown("BTC/USDT", "bos_continuation", "15m", "long") is True
-    assert pipe._is_on_cooldown("BTC/USDT", "fvg_retrace", "15m", "long") is False
-    assert pipe._is_on_cooldown("BTC/USDT", "bos_continuation", "5m", "long") is False
+    pipe._set_cooldown("BTC/USDT", "htf_pullback_continuation", "15m", "long")
+    assert pipe._is_on_cooldown("BTC/USDT", "htf_pullback_continuation", "15m", "long") is True
+    assert pipe._is_on_cooldown("BTC/USDT", "other", "15m", "long") is False
+    assert pipe._is_on_cooldown("BTC/USDT", "htf_pullback_continuation", "5m", "long") is False
 
 
 def test_signal_store_insertion_and_alert_payload_dict():
@@ -103,3 +115,21 @@ def test_signal_store_insertion_and_alert_payload_dict():
     assert len(result) == 1
     assert len(pipe.signal_store.active_signals) == 1
     assert alert.payload_types == [dict]
+    assert alert.setup_count == 1
+    assert alert.trigger_count == 0
+
+
+def test_setup_and_entry_are_deduplicated():
+    alert = _CapturingAlert()
+    pipe = Pipeline(min_score=0, min_rr_ratio=0, alerts=[alert], enabled_scenarios=[])
+    pipe.scenarios = [_AlwaysTriggerScenario()]
+    htf = _htf_bullish()
+    ltf = _ltf()
+
+    first = asyncio.run(pipe.run(htf, ltf))
+    second = asyncio.run(pipe.run(htf, ltf))
+
+    assert len(first) == 1
+    assert len(second) == 0
+    assert alert.setup_count == 1
+    assert len(pipe.signal_store.history) == 1

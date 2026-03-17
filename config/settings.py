@@ -14,8 +14,8 @@ class ExchangeConfig(BaseModel):
 
 
 class TimeframesConfig(BaseModel):
-    htf: list[str] = Field(default_factory=lambda: ["4h", "1d"])
-    ltf: list[str] = Field(default_factory=lambda: ["15m", "1h"])
+    htf: list[str] = Field(default_factory=lambda: ["1h"])
+    ltf: list[str] = Field(default_factory=lambda: ["5m"])
 
 
 class ScoringConfig(BaseModel):
@@ -63,12 +63,7 @@ class AlertsConfig(BaseModel):
 
 class ScenarioConfig(BaseModel):
     enabled: list[str] = Field(
-        default_factory=lambda: [
-            "bos_continuation",
-            "choch_confirmation",
-            "fvg_retrace",
-            "liquidity_sweep",
-        ]
+        default_factory=lambda: ["htf_pullback_continuation"]
     )
 
 

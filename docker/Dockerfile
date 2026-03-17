@@ -13,9 +13,11 @@ COPY alerts ./alerts
 COPY api ./api
 COPY config ./config
 COPY backtest ./backtest
+COPY tests ./tests
 COPY main.py ./main.py
 
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir -e .[dev]
+RUN python -m pytest -q
 
 VOLUME ["/app/config"]
 

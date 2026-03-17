@@ -3,14 +3,14 @@ from __future__ import annotations
 from core.models import Trigger
 
 WEIGHTS = {
-    "htf_alignment":          30,   # kritik
-    "fvg_presence":           25,   # entry kalitesi
-    "fvg_or_ob_presence":      0,   # deprecated (OB not implemented)
-    "volume_confirmation":    20,   # momentum teyidi
-    "liquidity_confluence":   15,   # güçlendirici
-    "session_time":           10,   # timing
+    "htf_alignment":   20,
+    "pullback_active": 15,
+    "zone_reaction":   20,
+    "displacement":    20,
+    "micro_bos":       20,
+    "first_pullback":   5,
 }
-# Toplam: 100
+# Total: 100
 
 ICT_FULL_SETUP_BONUS = 15
 MIN_SCORE = 65

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections import Counter, defaultdict, deque
+from collections import Counter, deque
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from alerts.base import BaseAlert
 from core.context import StructureContext
-from core.models import AlertPayload, Setup, Trigger
+from core.models import AlertPayload, Setup
 from core.structure import calculate_atr, current_session
 from risk.planner import RiskPlanner
 from scenarios import load_all_scenarios
@@ -37,7 +37,6 @@ class SignalStore:
         self.history.appendleft(payload)
 
     def update_status(self, signal_id: str, new_status: str) -> AlertPayload | None:
-        """Update status of a signal in-place. Returns updated signal or None."""
         closed_statuses = {"tp3_hit", "stopped", "invalidated", "expired"}
         updated: AlertPayload | None = None
         new_active: list[AlertPayload] = []
@@ -50,10 +49,8 @@ class SignalStore:
             else:
                 new_active.append(s)
         self.active_signals = new_active
-        # Sync history
         self.history = deque(
-            (s.model_copy(update={"status": new_status}) if s.id == signal_id else s
-             for s in self.history),
+            (s.model_copy(update={"status": new_status}) if s.id == signal_id else s for s in self.history),
             maxlen=self.history.maxlen,
         )
         return updated
@@ -86,12 +83,12 @@ class Pipeline:
         self.scenarios = load_all_scenarios(enabled=enabled_scenarios)
         self.signal_store = signal_store or SignalStore()
         self.broadcaster = broadcaster
-        self.cooldown_minutes = cooldown_minutes
 
-        # Two-stage state: "scenario:symbol" → list[Setup]
         self.active_setups: dict[str, list[Setup]] = {}
-        # Cooldown: (symbol, scenario_name, timeframe, direction) → last alert datetime
+        self.cooldown_minutes = cooldown_minutes
         self.alert_cooldowns: dict[tuple, datetime] = {}
+        self.setup_registry: dict[str, datetime] = {}
+        self.entry_registry: dict[str, datetime] = {}
 
     def _setup_key(self, symbol: str, scenario_name: str) -> str:
         return f"{scenario_name}:{symbol}"
@@ -106,102 +103,83 @@ class Pipeline:
     def _set_cooldown(self, symbol: str, scenario_name: str, timeframe: str, direction: str) -> None:
         self.alert_cooldowns[(symbol, scenario_name, timeframe, direction)] = datetime.now(timezone.utc)
 
-    def _merge_confluence(self, signals: list[AlertPayload]) -> list[AlertPayload]:
-        """Aynı sembol + aynı yönde birden fazla sinyal → tek birleşik sinyal."""
-        if len(signals) <= 1:
-            return signals
-
-        groups: dict[tuple, list[AlertPayload]] = defaultdict(list)
-        for s in signals:
-            groups[(s.symbol, s.direction)].append(s)
-
-        merged: list[AlertPayload] = []
-        for (symbol, direction), group in groups.items():
-            if len(group) == 1:
-                merged.extend(group)
-                continue
-            best = max(group, key=lambda s: s.score)
-            merged_factors: dict[str, bool] = {}
-            for s in group:
-                for k, v in s.confidence_factors.items():
-                    merged_factors[k] = merged_factors.get(k, False) or v
-            best = best.model_copy(update={"confidence_factors": merged_factors})
-            logger.info(
-                "Confluence merge: %d signals → 1 (%s %s score=%d)",
-                len(group), symbol, direction, best.score,
-            )
-            merged.append(best)
-
-        return merged
+    def _prune_registries(self, ttl_hours: int = 8) -> None:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=ttl_hours)
+        self.setup_registry = {k: v for k, v in self.setup_registry.items() if v > cutoff}
+        self.entry_registry = {k: v for k, v in self.entry_registry.items() if v > cutoff}
 
     async def run(self, htf_ctx: StructureContext, ltf_ctx: StructureContext) -> list[AlertPayload]:
+        produced: list[AlertPayload] = []
         symbol = ltf_ctx.symbol
-        htf_trend = htf_ctx.trend
-        produced = []
+        self._prune_registries()
         await self._check_active_signals(ltf_ctx)
 
         for scenario in self.scenarios:
-            key = f"{scenario.name}:{symbol}"
+            key = self._setup_key(symbol, scenario.name)
             setups = self.active_setups.setdefault(key, [])
 
-            # 1. Elapsed
             for s in setups:
                 s.candles_elapsed += 1
 
-            # 2. Invalidasyon
-            self.active_setups[key] = [
-                s for s in setups if not scenario.is_invalidated(s, ltf_ctx)
-            ]
+            valid_setups: list[Setup] = []
+            for s in setups:
+                if scenario.is_invalidated(s, ltf_ctx):
+                    s.state = "EXPIRED"
+                    s.meta["state"] = "EXPIRED"
+                else:
+                    valid_setups.append(s)
+            self.active_setups[key] = valid_setups
 
-            # 3. Yeni setup
-            if not self.active_setups[key]:
-                new_setup = scenario.detect_setup(htf_ctx, ltf_ctx)
-                if new_setup:
-                    # Yön kontrolü — neutral'da her iki yön de kabul
-                    trend_ok = (
-                        htf_trend == "neutral" or
-                        (htf_trend == "bullish" and new_setup.direction == "long") or
-                        (htf_trend == "bearish" and new_setup.direction == "short")
-                    )
-                    if trend_ok:
-                        self.active_setups[key].append(new_setup)
-                        logger.info("Setup: %s %s %s", scenario.name, symbol, new_setup.direction)
-                        await self._dispatch_setup_alerts({
-                            "scenario_name": new_setup.scenario_name,
-                            "alert_type": new_setup.alert_type,
-                            "symbol": symbol,
-                            "pair": symbol.replace("/", ""),
-                            "timeframe": new_setup.timeframe,
-                            "direction": new_setup.direction,
-                            "entry_zone_low": new_setup.entry_zone_low,
-                            "entry_zone_high": new_setup.entry_zone_high,
-                            "invalidation_level": new_setup.invalidation_level,
-                            "max_candles": new_setup.max_candles,
-                            "htf_trend": htf_trend,
-                        })
+            new_setup = scenario.detect_setup(htf_ctx, ltf_ctx)
+            if new_setup:
+                trend = str(new_setup.meta.get("trend", htf_ctx.trend))
+                zone_id = str(new_setup.meta.get("zone_id", f"{new_setup.entry_zone_low}:{new_setup.entry_zone_high}"))
+                setup_id = str(new_setup.meta.get("setup_id", f"{symbol}:{zone_id}:{trend}"))
+                new_setup.meta["zone_id"] = zone_id
+                new_setup.meta["setup_id"] = setup_id
 
-            # 4. Trigger
+                already_active = any(s.meta.get("setup_id") == setup_id for s in self.active_setups[key])
+                if setup_id not in self.setup_registry and not already_active:
+                    new_setup.state = "ACTIVE"
+                    new_setup.meta["state"] = "ACTIVE"
+                    self.active_setups[key].append(new_setup)
+                    self.setup_registry[setup_id] = datetime.now(timezone.utc)
+                    await self._dispatch_setup_alerts({
+                        "type": "SETUP_DETECTED",
+                        "scenario_name": new_setup.scenario_name,
+                        "alert_type": "SETUP_DETECTED",
+                        "symbol": symbol,
+                        "trend": trend,
+                        "zone": [new_setup.entry_zone_low, new_setup.entry_zone_high],
+                        "entry": (new_setup.entry_zone_low + new_setup.entry_zone_high) / 2,
+                        "sl": new_setup.invalidation_level,
+                        "tp": [],
+                        "confidence": 0.0,
+                        "setup_id": setup_id,
+                        "zone_id": zone_id,
+                        "timeframe": new_setup.timeframe,
+                        "direction": new_setup.direction,
+                        "pair": symbol.replace("/", ""),
+                        "entry_zone_low": new_setup.entry_zone_low,
+                        "entry_zone_high": new_setup.entry_zone_high,
+                        "invalidation_level": new_setup.invalidation_level,
+                        "max_candles": new_setup.max_candles,
+                        "htf_trend": trend,
+                    })
+
             for setup in self.active_setups[key][:]:
+                setup_id = str(setup.meta.get("setup_id", ""))
+                if setup_id and setup_id in self.entry_registry:
+                    continue
+
                 trigger = scenario.detect_trigger(setup, ltf_ctx)
                 if not trigger:
                     continue
 
-                # Cooldown
-                if self._is_on_cooldown(symbol, scenario.name, ltf_ctx.timeframe, setup.direction):
-                    continue
-
-                # Score hesapla — ancak burada yapılabilir
                 computed_score = score(trigger)
-
-                # ── HTF PENALTY — score hesaplandıktan SONRA uygulanır ───────
-                if htf_trend == "neutral":
-                    computed_score = int(computed_score * 0.7)
-
                 if computed_score < self.min_score:
-                    self.active_setups[key].remove(setup)
                     continue
 
-                # Risk planı
                 atr = calculate_atr(ltf_ctx.candles) if ltf_ctx.candles else 0.0
                 swing_highs = [x.price for x in ltf_ctx.swing_highs[-10:]]
                 swing_lows = [x.price for x in ltf_ctx.swing_lows[-10:]]
@@ -212,13 +190,17 @@ class Pipeline:
                     swing_lows=swing_lows,
                 )
                 if plan.rr_ratio < self.min_rr_ratio:
-                    self.active_setups[key].remove(setup)
                     continue
 
-                # Payload
+                trend = str(setup.meta.get("trend", htf_ctx.trend))
+                zone_id = str(setup.meta.get("zone_id", ""))
+                setup_id = str(setup.meta.get("setup_id", ""))
+                entry_price = (plan.entry_low + plan.entry_high) / 2
+
                 payload = AlertPayload(
+                    type="ENTRY_CONFIRMED",
                     scenario_name=setup.scenario_name,
-                    alert_type=setup.alert_type,
+                    alert_type="ENTRY_CONFIRMED",
                     symbol=symbol,
                     pair=symbol.replace("/", ""),
                     timeframe=ltf_ctx.timeframe,
@@ -228,36 +210,42 @@ class Pipeline:
                     score=computed_score,
                     confidence_factors=trigger.confidence_factors,
                     risk_plan=plan,
-                    ict_full_setup=bool(trigger.setup.meta.get("ict_bonus")),
-                    scenario_detail=scenario.describe(setup, trigger),
-                    htf_trend=htf_trend,
+                    ict_full_setup=False,
+                    scenario_detail=f"{setup.scenario_name} | {setup.direction} | confirmed",
+                    htf_trend=trend,
+                    trend=trend if trend in {"bullish", "bearish"} else "neutral",
                     session=current_session(),
+                    zone=[setup.entry_zone_low, setup.entry_zone_high],
+                    entry=entry_price,
+                    sl=plan.stop_loss,
+                    tp=[plan.tp1, plan.tp2, plan.tp3],
+                    confidence=round(computed_score / 100.0, 2),
+                    setup_id=setup_id,
+                    zone_id=zone_id,
                     timestamp=trigger.timestamp,
                 )
 
+                setup.state = "TRIGGERED"
+                setup.meta["state"] = "TRIGGERED"
+                self.entry_registry[setup_id] = datetime.now(timezone.utc)
                 self._set_cooldown(symbol, scenario.name, ltf_ctx.timeframe, setup.direction)
                 self.active_setups[key].remove(setup)
                 produced.append(payload)
                 self.signal_store.add(payload)
 
                 payload_dict = payload.model_dump(mode="json")
-                payload_dict["entry_ready"] = True
-                await self._dispatch_trigger_alerts(payload_dict)
-                await self._dispatch_alerts(payload_dict)
+                await self._dispatch_entry_alerts(payload_dict)
                 if self.broadcaster:
-                    maybe = self.broadcaster(payload_dict)
+                    maybe = self.broadcaster({"type": "new_signal", "data": payload_dict})
                     if asyncio.iscoroutine(maybe):
                         await maybe
 
-        return self._merge_confluence(produced)
-     
+        return produced
+
     async def _check_active_signals(self, ltf_ctx: StructureContext) -> None:
-        """Check active signals for TP hits, stop loss, and invalidation on each LTF candle."""
         if not ltf_ctx.candles:
             return
         c = ltf_ctx.candles[-1]
-
-        # Only monitor signals belonging to this symbol + LTF timeframe
         candidates = [
             s for s in self.signal_store.active_signals
             if s.symbol == ltf_ctx.symbol and s.timeframe == ltf_ctx.timeframe
@@ -269,19 +257,17 @@ class Pipeline:
             new_status: str | None = None
 
             if signal.direction == "long":
-                # Invalidation / stop — highest priority
                 if c.low <= rp.stop_loss:
                     new_status = "stopped"
                 elif c.low <= rp.invalidation_level:
                     new_status = "invalidated"
-                # TP levels — check in sequence
                 elif status == "active" and c.high >= rp.tp1:
                     new_status = "tp1_hit"
                 elif status == "tp1_hit" and c.high >= rp.tp2:
                     new_status = "tp2_hit"
                 elif status == "tp2_hit" and c.high >= rp.tp3:
                     new_status = "tp3_hit"
-            else:  # short
+            else:
                 if c.high >= rp.stop_loss:
                     new_status = "stopped"
                 elif c.high >= rp.invalidation_level:
@@ -300,43 +286,18 @@ class Pipeline:
             if updated is None:
                 continue
 
-            logger.info(
-                "Signal %s: %s %s → %s",
-                signal.id[:8], signal.symbol, signal.direction, new_status,
-            )
-
-            event_dict = updated.model_dump(mode="json")
-
-            if new_status in ("stopped", "invalidated"):
-                await asyncio.gather(
-                    *(alert.send_invalidation(event_dict) if new_status == "invalidated"
-                      else alert.send_stop_hit(event_dict)
-                      for alert in self.alerts),
-                    return_exceptions=True,
-                )
-            elif new_status in ("tp1_hit", "tp2_hit", "tp3_hit"):
-                await asyncio.gather(
-                    *(alert.send_tp_hit(event_dict) for alert in self.alerts),
-                    return_exceptions=True,
-                )
-
             if self.broadcaster:
-                msg = {"type": "signal_update", "data": event_dict}
+                msg = {"type": "signal_update", "data": updated.model_dump(mode="json")}
                 maybe = self.broadcaster(msg)
                 if asyncio.iscoroutine(maybe):
                     await maybe
-
-    async def _dispatch_alerts(self, payload: dict[str, Any]) -> None:
-        if not self.alerts:
-            return
-        await asyncio.gather(*(alert.send(payload) for alert in self.alerts), return_exceptions=True)
 
     async def _dispatch_setup_alerts(self, payload: dict[str, Any]) -> None:
         if not self.alerts:
             return
         await asyncio.gather(*(alert.send_setup(payload) for alert in self.alerts), return_exceptions=True)
 
-    async def _dispatch_trigger_alerts(self, payload: dict[str, Any]) -> None:
+    async def _dispatch_entry_alerts(self, payload: dict[str, Any]) -> None:
         if not self.alerts:
             return
-        await asyncio.gather(*(alert.send_trigger(payload) for alert in self.alerts), return_exceptions=True)
+        await asyncio.gather(*(alert.send(payload) for alert in self.alerts), return_exceptions=True)

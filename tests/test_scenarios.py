@@ -1,6 +1,7 @@
 import pytest
 
 from backtest.runner import run_fixture_backtest
+from scenarios import load_all_scenarios
 
 
 @pytest.mark.asyncio
@@ -12,8 +13,7 @@ async def test_fixture_backtest_produces_stats():
 
 
 def test_v2_scenarios_load():
-    from scenarios import load_all_scenarios
-    scenarios = load_all_scenarios(enabled=["bos_continuation", "fvg_retrace", "liquidity_sweep"])
-    assert len(scenarios) == 3
-    names = {s.name for s in scenarios}
-    assert names == {"bos_continuation", "fvg_retrace", "liquidity_sweep"}
+    scenarios = load_all_scenarios()
+    assert isinstance(scenarios, list)
+    assert len(scenarios) == 1
+    assert scenarios[0].name == "htf_pullback_continuation"

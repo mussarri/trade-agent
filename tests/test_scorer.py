@@ -7,8 +7,8 @@ from scoring.scorer import ICT_FULL_SETUP_BONUS, MIN_RR_RATIO, MIN_SCORE, score
 
 def _make_trigger(factors: dict[str, bool], ict_bonus: bool = False) -> Trigger:
     setup = Setup(
-        scenario_name="bos_continuation",
-        alert_type="BOS_CONTINUATION",
+        scenario_name="htf_pullback_continuation",
+        alert_type="ENTRY_CONFIRMED",
         symbol="BTC/USDT",
         timeframe="15m",
         direction="long",
@@ -36,49 +36,53 @@ def test_min_rr_default():
 
 
 def test_score_all_true():
-    """5 faktörün hepsi True → 100."""
+    """All strategy factors true -> 100."""
     t = _make_trigger({
         "htf_alignment": True,
-        "fvg_presence": True,
-        "volume_confirmation": True,
-        "liquidity_confluence": True,
-        "session_time": True,
+        "pullback_active": True,
+        "zone_reaction": True,
+        "displacement": True,
+        "micro_bos": True,
+        "first_pullback": True,
     })
     assert score(t) == 100
 
 
 def test_score_htf_only():
-    """Sadece htf_alignment=True → 30."""
+    """Only HTF alignment -> 20."""
     t = _make_trigger({
         "htf_alignment": True,
-        "fvg_presence": False,
-        "volume_confirmation": False,
-        "liquidity_confluence": False,
-        "session_time": False,
+        "pullback_active": False,
+        "zone_reaction": False,
+        "displacement": False,
+        "micro_bos": False,
+        "first_pullback": False,
     })
-    assert score(t) == 30
+    assert score(t) == 20
 
 
-def test_score_htf_plus_fvg():
-    """htf_alignment(30) + fvg_presence(25) = 55."""
+def test_score_htf_plus_pullback():
+    """htf_alignment(20) + pullback_active(15) = 35."""
     t = _make_trigger({
         "htf_alignment": True,
-        "fvg_presence": True,
-        "volume_confirmation": False,
-        "liquidity_confluence": False,
-        "session_time": False,
+        "pullback_active": True,
+        "zone_reaction": False,
+        "displacement": False,
+        "micro_bos": False,
+        "first_pullback": False,
     })
-    assert score(t) == 55
+    assert score(t) == 35
 
 
 def test_score_ict_bonus_via_meta():
     """ICT bonus meta'dan alınıyor → +15, capped at 100."""
     t = _make_trigger({
         "htf_alignment": True,
-        "fvg_presence": True,
-        "volume_confirmation": True,
-        "liquidity_confluence": True,
-        "session_time": True,
+        "pullback_active": True,
+        "zone_reaction": True,
+        "displacement": True,
+        "micro_bos": True,
+        "first_pullback": True,
     }, ict_bonus=True)
     # 100 + 15 → capped at 100
     assert score(t) == 100
@@ -88,13 +92,14 @@ def test_score_ict_bonus_via_param():
     """ICT bonus parametre ile de çalışıyor."""
     t = _make_trigger({
         "htf_alignment": True,
-        "fvg_presence": True,
-        "volume_confirmation": False,
-        "liquidity_confluence": False,
-        "session_time": False,
+        "pullback_active": True,
+        "zone_reaction": False,
+        "displacement": False,
+        "micro_bos": False,
+        "first_pullback": False,
     })
-    # 30 + 25 + 15 = 70
-    assert score(t, ict_bonus=ICT_FULL_SETUP_BONUS) == 70
+    # 20 + 15 + 15 = 50
+    assert score(t, ict_bonus=ICT_FULL_SETUP_BONUS) == 50
 
 
 def test_score_unknown_factors_ignored():
@@ -104,4 +109,4 @@ def test_score_unknown_factors_ignored():
         "unknown_factor": True,
         "another_unknown": True,
     })
-    assert score(t) == 30
+    assert score(t) == 20

@@ -8,8 +8,8 @@ from risk.planner import RiskPlanner
 
 def _trigger() -> Trigger:
     setup = Setup(
-        scenario_name="bos_continuation",
-        alert_type="BOS_CONTINUATION",
+        scenario_name="htf_pullback_continuation",
+        alert_type="ENTRY_CONFIRMED",
         symbol="BTC/USDT",
         timeframe="15m",
         direction="long",

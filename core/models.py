@@ -107,6 +107,7 @@ class Setup(BaseModel):
     swing_low: float
     swing_high: float
     invalidation_level: float
+    state: Literal["NEW", "ACTIVE", "TRIGGERED", "EXPIRED"] = "NEW"
     candles_elapsed: int = 0
     max_candles: int = 20
     meta: dict[str, Any] = Field(default_factory=dict)
@@ -126,8 +127,9 @@ class Trigger(BaseModel):
 class AlertPayload(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     status: Literal["active", "tp1_hit", "tp2_hit", "tp3_hit", "stopped", "invalidated", "expired"] = "active"
+    type: Literal["ENTRY_CONFIRMED"] = "ENTRY_CONFIRMED"
     scenario_name: str
-    alert_type: str
+    alert_type: Literal["ENTRY_CONFIRMED"] = "ENTRY_CONFIRMED"
     symbol: str
     pair: str = ""          # "BTCUSDT" format for display
     timeframe: str          # LTF timeframe (e.g. "15m") — kept for backward compat
@@ -141,4 +143,12 @@ class AlertPayload(BaseModel):
     htf_trend: str = ""
     session: str = ""
     scenario_detail: str = ""
+    trend: Literal["bullish", "bearish", "neutral"] = "neutral"
+    zone: list[float] = Field(default_factory=list)
+    entry: float = 0.0
+    sl: float = 0.0
+    tp: list[float] = Field(default_factory=list)
+    confidence: float = 0.0
+    setup_id: str = ""
+    zone_id: str = ""
     timestamp: datetime
