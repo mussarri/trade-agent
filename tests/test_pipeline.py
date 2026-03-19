@@ -14,12 +14,16 @@ class _CapturingAlert(BaseAlert):
     def __init__(self) -> None:
         self.payload_types: list[type] = []
         self.setup_count = 0
+        self.structure_count = 0
 
     async def send(self, payload: dict) -> None:
         self.payload_types.append(type(payload))
 
     async def send_setup(self, payload: dict) -> None:
         self.setup_count += 1
+
+    async def send_structure(self, payload: dict) -> None:
+        self.structure_count += 1
 
 
 class _AlwaysTriggerScenario(BaseScenario):
@@ -129,3 +133,33 @@ def test_setup_and_entry_are_deduplicated():
     assert len(second) == 0
     assert alert.setup_count == 1
     assert len(pipe.signal_store.history) == 1
+
+
+def test_pipeline_dispatches_htf_structure_shift_alerts():
+    from core.candle import Candle
+    from core.models import SwingPoint
+
+    alert = _CapturingAlert()
+    pipe = Pipeline(min_score=0, min_rr_ratio=0, alerts=[alert], enabled_scenarios=[])
+
+    htf = StructureContext(symbol="BTC/USDT", timeframe="1h")
+    htf.htf_trend = "bearish"
+    htf.last_external_lh = SwingPoint(index=10, price=100.0, kind="high")
+    htf._update_htf_trend(
+        Candle(
+            symbol="BTC/USDT",
+            timeframe="1h",
+            timestamp=datetime.now(tz=timezone.utc),
+            open=99.5,
+            high=101.2,
+            low=99.0,
+            close=100.8,
+            volume=120.0,
+            is_closed=True,
+        )
+    )
+
+    ltf = _ltf()
+    result = asyncio.run(pipe.run(htf, ltf))
+    assert result == []
+    assert alert.structure_count == 1

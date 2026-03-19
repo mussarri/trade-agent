@@ -23,6 +23,15 @@ class DiscordAlert(BaseAlert):
         except Exception as exc:
             logger.warning("Discord alert failed: %s", exc)
 
+    async def send_structure(self, payload: dict) -> None:
+        embed = self._build_structure_embed(payload)
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(self.webhook_url, json={"embeds": [embed]})
+                resp.raise_for_status()
+        except Exception as exc:
+            logger.warning("Discord structure alert failed: %s", exc)
+
     def _build_embed(self, payload: dict) -> dict:
         direction = payload.get("direction", "").upper()
         color = 0x00FF88 if direction == "LONG" else 0xFF4444
@@ -46,4 +55,23 @@ class DiscordAlert(BaseAlert):
             "color": color,
             "fields": fields,
             "footer": {"text": f"trade-agent • {payload.get('timeframe', '')} • {payload.get('timestamp', '')}"},
+        }
+
+    def _build_structure_embed(self, payload: dict) -> dict:
+        is_bull = payload.get("alert_type") == "HTF_STRUCTURE_SHIFT_BULLISH"
+        color = 0x00CC66 if is_bull else 0xCC3333
+        symbol = payload.get("symbol", "")
+        timeframe = payload.get("timeframe_htf", payload.get("timeframe", ""))
+        fields = [
+            {"name": "Previous Trend", "value": str(payload.get("previous_htf_trend", "neutral")), "inline": True},
+            {"name": "New Trend", "value": str(payload.get("new_htf_trend", payload.get("direction", "neutral"))), "inline": True},
+            {"name": "Broken Level", "value": f"{float(payload.get('broken_level', 0.0)):.6f}", "inline": True},
+            {"name": "Current Close", "value": f"{float(payload.get('current_close', 0.0)):.6f}", "inline": True},
+            {"name": "Reason", "value": str(payload.get("reason", "")), "inline": False},
+        ]
+        return {
+            "title": f"📐 {payload.get('alert_type', 'HTF_STRUCTURE_SHIFT')} — {symbol}",
+            "color": color,
+            "fields": fields,
+            "footer": {"text": f"trade-agent • {timeframe} • {payload.get('timestamp', '')}"},
         }

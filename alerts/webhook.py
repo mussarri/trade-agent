@@ -32,3 +32,6 @@ class WebhookAlert(BaseAlert):
                 resp.raise_for_status()
         except Exception as exc:
             logger.warning("Webhook alert failed: %s", exc)
+
+    async def send_structure(self, payload: dict) -> None:
+        await self.send(payload)

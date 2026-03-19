@@ -52,12 +52,26 @@ class SignalEngine:
         enabled_scenarios: list[str],
         alerts: list[BaseAlert] | None = None,
         broadcaster=None,
+        htf_pivot_length: int = 5,
+        ltf_pivot_length: int = 3,
+        min_swing_distance_atr_mult: float = 0.8,
+        equal_level_tolerance: float = 0.001,
+        use_close_for_break_confirmation: bool = True,
     ):
         self.symbols = symbols
         # Paired combinations: htf[i] × ltf[i]  e.g. [(1h,5m), (4h,15m)]
         self.tf_pairs: list[tuple[str, str]] = list(zip(htf, ltf))
         self.contexts: dict[tuple[str, str], StructureContext] = {}
         self.store = SignalStore(history_size=50)
+        self.structure_context_kwargs = {
+            "lookback": max(1, int(ltf_pivot_length)),
+            "external_lookback": max(1, int(htf_pivot_length)),
+            "ltf_pivot_length": max(1, int(ltf_pivot_length)),
+            "htf_pivot_length": max(1, int(htf_pivot_length)),
+            "min_swing_distance_atr_mult": max(0.0, float(min_swing_distance_atr_mult)),
+            "equal_level_tolerance": max(0.0, float(equal_level_tolerance)),
+            "use_close_for_break_confirmation": bool(use_close_for_break_confirmation),
+        }
 
         risk_planner = RiskPlanner(
             risk_per_trade_pct=risk_per_trade_pct,
@@ -103,6 +117,8 @@ class SignalEngine:
     async def on_candle_closed(self, ctx: StructureContext, candle: Candle) -> None:
         self.contexts[(ctx.symbol, ctx.timeframe)] = ctx
         for (h, l), pipeline in self.pipelines.items():
+            if ctx.timeframe == h:
+                await pipeline.dispatch_htf_structure_alerts(ctx)
             if ctx.timeframe == l:
                 htf_ctx = self.contexts.get((ctx.symbol, h))
                 if htf_ctx:
@@ -114,6 +130,7 @@ class SignalEngine:
             timeframe=timeframe,
             candles=list(candles),
             on_candle_closed=self.on_candle_closed,
+            context_kwargs=self.structure_context_kwargs,
         )
         await feed.run(delay=0.0)
 
@@ -165,6 +182,7 @@ class SignalEngine:
                             symbol, tf, exchange,
                             self.on_candle_closed,
                             on_history_ready=self.seed_context,
+                            context_kwargs=self.structure_context_kwargs,
                         ).start()
                     ))
             await asyncio.gather(*tasks)

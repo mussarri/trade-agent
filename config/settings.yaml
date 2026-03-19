@@ -22,6 +22,13 @@ risk:
   atr_sl_multiplier: 0.5
   atr_period: 14
 
+structure:
+  htf_pivot_length: 5
+  ltf_pivot_length: 3
+  min_swing_distance_atr_mult: 0.8
+  equal_level_tolerance: 0.001
+  use_close_for_break_confirmation: true
+
 alerts:
   telegram:
     enabled: true

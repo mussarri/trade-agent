@@ -93,6 +93,7 @@ class Pipeline:
         produced: list[AlertPayload] = []
         symbol = ltf_ctx.symbol
         self._prune_registries()
+        await self.dispatch_htf_structure_alerts(htf_ctx)
 
         for scenario in self.scenarios:
             key = self._setup_key(symbol, scenario.name)
@@ -238,6 +239,17 @@ class Pipeline:
 
         return produced
 
+    async def dispatch_htf_structure_alerts(self, htf_ctx: StructureContext) -> None:
+        payloads = htf_ctx.pop_pending_htf_structure_alerts()
+        if not payloads:
+            return
+        for payload in payloads:
+            await self._dispatch_structure_alerts(payload)
+            if self.broadcaster:
+                maybe = self.broadcaster({"type": "structure_shift", "data": payload})
+                if asyncio.iscoroutine(maybe):
+                    await maybe
+
     async def _dispatch_setup_alerts(self, payload: dict[str, Any]) -> None:
         if not self.alerts:
             return
@@ -247,3 +259,8 @@ class Pipeline:
         if not self.alerts:
             return
         await asyncio.gather(*(alert.send(payload) for alert in self.alerts), return_exceptions=True)
+
+    async def _dispatch_structure_alerts(self, payload: dict[str, Any]) -> None:
+        if not self.alerts:
+            return
+        await asyncio.gather(*(alert.send_structure(payload) for alert in self.alerts), return_exceptions=True)

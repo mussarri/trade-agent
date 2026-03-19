@@ -29,6 +29,14 @@ class RiskConfig(BaseModel):
     atr_period: int = 14
 
 
+class StructureConfig(BaseModel):
+    htf_pivot_length: int = 5
+    ltf_pivot_length: int = 3
+    min_swing_distance_atr_mult: float = 0.8
+    equal_level_tolerance: float = 0.001
+    use_close_for_break_confirmation: bool = True
+
+
 class TelegramConfig(BaseModel):
     enabled: bool = True
 
@@ -73,6 +81,7 @@ class AppConfig(BaseModel):
     timeframes: TimeframesConfig = Field(default_factory=TimeframesConfig)
     scoring: ScoringConfig = Field(default_factory=ScoringConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
+    structure: StructureConfig = Field(default_factory=StructureConfig)
     alerts: AlertsConfig = Field(default_factory=AlertsConfig)
     scenarios: ScenarioConfig = Field(default_factory=ScenarioConfig)
 

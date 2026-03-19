@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 EMOJI = {
     "SETUP_DETECTED": "👀",
     "ENTRY_CONFIRMED": "✅",
+    "HTF_STRUCTURE_SHIFT_BULLISH": "🟢",
+    "HTF_STRUCTURE_SHIFT_BEARISH": "🔴",
 }
 
 
@@ -32,6 +34,13 @@ class TelegramAlert(BaseAlert):
             await self.bot.send_message(chat_id=self.chat_id, text=text, parse_mode="HTML")
         except Exception as exc:
             logger.warning("Telegram setup alert failed: %s", exc)
+
+    async def send_structure(self, payload: dict) -> None:
+        text = self._format_structure_shift(payload)
+        try:
+            await self.bot.send_message(chat_id=self.chat_id, text=text, parse_mode="HTML")
+        except Exception as exc:
+            logger.warning("Telegram structure alert failed: %s", exc)
 
     def _format_setup(self, payload: dict) -> str:
         pair = payload.get("pair") or payload.get("symbol", "").replace("/", "")
@@ -75,4 +84,24 @@ class TelegramAlert(BaseAlert):
             f"🛑 SL         : {stop:.4f}\n"
             f"🎯 TP1/TP2/TP3: {tp1:.4f} / {tp2:.4f} / {tp3:.4f}\n"
             f"📊 R:R        : {rr:.2f}"
+        )
+
+    def _format_structure_shift(self, payload: dict) -> str:
+        alert_type = payload.get("alert_type", "HTF_STRUCTURE_SHIFT")
+        icon = EMOJI.get(alert_type, "📐")
+        symbol = payload.get("symbol", "")
+        timeframe = payload.get("timeframe_htf", payload.get("timeframe", ""))
+        prev_trend = str(payload.get("previous_htf_trend", "neutral"))
+        new_trend = str(payload.get("new_htf_trend", payload.get("direction", "neutral")))
+        level = float(payload.get("broken_level", 0.0))
+        close = float(payload.get("current_close", 0.0))
+        reason = payload.get("reason", "")
+        return (
+            f"{icon} <b>{alert_type}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📌 {symbol} ({timeframe})\n"
+            f"🧱 Broken Level : {level:.6f}\n"
+            f"💵 Current Close: {close:.6f}\n"
+            f"↪️ Trend Shift   : {prev_trend} → {new_trend}\n"
+            f"📝 {reason}"
         )

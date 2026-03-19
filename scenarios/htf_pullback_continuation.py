@@ -108,6 +108,9 @@ def _detect_displacement_idx(ctx: StructureContext, direction: str) -> int | Non
 
 
 def _htf_trend(ctx: StructureContext) -> str:
+    if ctx.htf_trend in {"bullish", "bearish"}:
+        return ctx.htf_trend
+
     labels = ctx.external_structure_labels[-6:] or ctx.structure_labels[-6:]
     if labels:
         bullish = sum(1 for x in labels if x in {"HH", "HL"})

@@ -39,11 +39,12 @@ class DataFeed:
         exchange,
         on_candle_closed: OnCandleClosed,
         on_history_ready: OnHistoryReady | None = None,
+        context_kwargs: dict | None = None,
     ):
         self.symbol = symbol
         self.timeframe = timeframe
         self.exchange = exchange
-        self.context = StructureContext(symbol=symbol, timeframe=timeframe)
+        self.context = StructureContext(symbol=symbol, timeframe=timeframe, **(context_kwargs or {}))
         self._on_candle_closed = on_candle_closed
         self._on_history_ready = on_history_ready
         self._last_ts: int | None = None   # kapanan son mumun timestamp (ms)
@@ -145,11 +146,12 @@ class FixtureFeed:
         timeframe: str,
         candles: list[Candle],
         on_candle_closed: OnCandleClosed,
+        context_kwargs: dict | None = None,
     ):
         self.symbol = symbol
         self.timeframe = timeframe
         self.candles = candles
-        self.context = StructureContext(symbol=symbol, timeframe=timeframe)
+        self.context = StructureContext(symbol=symbol, timeframe=timeframe, **(context_kwargs or {}))
         self._on_candle_closed = on_candle_closed
 
     async def run(self, delay: float = 0.0) -> None:

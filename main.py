@@ -51,6 +51,11 @@ def build_engine() -> SignalEngine:
         atr_sl_multiplier=cfg.risk.atr_sl_multiplier,
         enabled_scenarios=cfg.scenarios.enabled,
         alerts=alerts,
+        htf_pivot_length=cfg.structure.htf_pivot_length,
+        ltf_pivot_length=cfg.structure.ltf_pivot_length,
+        min_swing_distance_atr_mult=cfg.structure.min_swing_distance_atr_mult,
+        equal_level_tolerance=cfg.structure.equal_level_tolerance,
+        use_close_for_break_confirmation=cfg.structure.use_close_for_break_confirmation,
     )
 
 
