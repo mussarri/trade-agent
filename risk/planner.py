@@ -36,6 +36,7 @@ class RiskPlanner:
             atr,
             liquidity_above=swing_highs,
             liquidity_below=swing_lows,
+            entry_override=float(setup.meta.get("entry_price")) if setup.meta.get("entry_price") is not None else None,
         )
 
     def _build_plan(
@@ -48,28 +49,30 @@ class RiskPlanner:
         atr: float,
         liquidity_above: list[float] | None = None,
         liquidity_below: list[float] | None = None,
+        entry_override: float | None = None,
     ) -> RiskPlan:
-        entry_mid = (entry_low + entry_high) / 2
-        buffer = atr * self.atr_sl_multiplier
+        entry_mid = entry_override if entry_override is not None else (entry_low + entry_high) / 2
 
         if direction == "long":
-            stop_loss = swing_low - buffer
+            stop_loss = swing_low
             risk = max(entry_mid - stop_loss, 1e-9)
             # Use structural swing highs as liquidity targets; fall back to R-multiples.
             levels = sorted(p for p in (liquidity_above or []) if p > entry_mid)
             tp1 = levels[0] if len(levels) >= 1 else entry_mid + risk * 2.0
             tp2 = levels[1] if len(levels) >= 2 else entry_mid + risk * 3.0
-            tp3 = entry_mid + risk * 4.0
+            extension = max(swing_high - swing_low, risk)
+            tp3 = max(entry_mid + extension * 1.272, tp2)
             rr = (tp1 - entry_mid) / risk
             invalidation = swing_low
         else:
-            stop_loss = swing_high + buffer
+            stop_loss = swing_high
             risk = max(stop_loss - entry_mid, 1e-9)
             # Use structural swing lows as liquidity targets; fall back to R-multiples.
             levels = sorted((p for p in (liquidity_below or []) if p < entry_mid), reverse=True)
             tp1 = levels[0] if len(levels) >= 1 else entry_mid - risk * 2.0
             tp2 = levels[1] if len(levels) >= 2 else entry_mid - risk * 3.0
-            tp3 = entry_mid - risk * 4.0
+            extension = max(swing_high - swing_low, risk)
+            tp3 = min(entry_mid - extension * 1.272, tp2)
             rr = (entry_mid - tp1) / risk
             invalidation = swing_high
 

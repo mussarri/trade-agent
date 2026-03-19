@@ -15,13 +15,13 @@ interface Props {
   isNew?: boolean
 }
 
-// v2.0 — 5 factors
 const CONFIDENCE_LABELS: Record<keyof ConfidenceFactors, string> = {
-  htf_alignment:      'HTF Trend',
-  fvg_or_ob_presence: 'FVG/OB',
-  volume_confirmation:'Volume',
-  liquidity_confluence:'Liquidity',
-  session_time:       'Session',
+  htf_alignment: 'HTF Trend',
+  pullback_active: 'Pullback',
+  zone_reaction: 'Zone Reaction',
+  displacement: 'Displacement',
+  micro_bos: 'Micro BOS',
+  first_pullback: 'First Pullback',
 }
 
 function PriceBar({ signal }: { signal: Signal }) {

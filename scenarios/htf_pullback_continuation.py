@@ -69,10 +69,21 @@ def _fib_zone(candles: list[Candle], direction: str, displacement_idx: int) -> t
     return min(z_low, z_high), max(z_low, z_high), f"fib:{direction}:{displacement_idx}"
 
 
+def _breakout_retest_zone(ctx: StructureContext, direction: str) -> tuple[float, float, str] | None:
+    wanted = "bullish" if direction == "long" else "bearish"
+    for evt in reversed(ctx.bos_events):
+        if evt.direction != wanted:
+            continue
+        pad = max(_avg_range(ctx.candles, 12) * 0.15, 1e-9)
+        return evt.level - pad, evt.level + pad, f"retest:{wanted}:{evt.candle_index}:{round(evt.level, 6)}"
+    return None
+
+
 def _select_zone(ctx: StructureContext, direction: str, displacement_idx: int) -> tuple[float, float, str] | None:
     return (
         _latest_fvg_zone(ctx, direction)
         or _order_block_zone(ctx.candles, direction, displacement_idx)
+        or _breakout_retest_zone(ctx, direction)
         or _fib_zone(ctx.candles, direction, displacement_idx)
     )
 
@@ -115,8 +126,6 @@ def _htf_trend(ctx: StructureContext) -> str:
     midpoint = (recent_high + recent_low) / 2
     if price > ma and price > midpoint:
         return "bullish"
-    if price < ma and price < midpoint:
-        return "bearish"
     return "neutral"
 
 
@@ -234,7 +243,8 @@ class HtfPullbackContinuationScenario(BaseScenario):
         candle_is_bull = last.close > last.open and _body_ratio(last) >= 0.6
         candle_is_bear = last.close < last.open and _body_ratio(last) >= 0.6
         displacement_ok = _candle_range(last) > avg_r * 1.5 if avg_r > 0 else False
-        reacted = (last.close > ((zone_low + zone_high) / 2)) if setup.direction == "long" else (last.close < ((zone_low + zone_high) / 2))
+        zone_mid = (zone_low + zone_high) / 2
+        reacted = (last.close > zone_mid and last.low <= zone_high) if setup.direction == "long" else (last.close < zone_mid and last.high >= zone_low)
         micro_level = float(setup.meta.get("micro_bos_level", 0.0))
 
         if setup.direction == "long":
@@ -257,12 +267,13 @@ class HtfPullbackContinuationScenario(BaseScenario):
         setup.alert_type = "ENTRY_CONFIRMED"
         setup.meta["state"] = "TRIGGERED"
         setup.meta["trend"] = trend
+        setup.meta["entry_price"] = last.close
         return Trigger(
             setup=setup,
             conditions=TriggerCondition(
                 close_confirm=reacted,
                 breakout_close=micro_bos,
-                volume_confirm=displacement_ok,
+                displacement_confirm=displacement_ok,
             ),
             confidence_factors={
                 "htf_alignment": trend in {"bullish", "bearish"},

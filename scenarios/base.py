@@ -56,13 +56,10 @@ class BaseScenario(ABC):
 
     def describe(self, setup: Setup, trigger: Trigger) -> str:
         cond = trigger.conditions
-        if cond.sweep_reversal:
-            kind = "sweep_reversal"
-        elif cond.close_confirm:
+        if cond.close_confirm:
             kind = "close_confirm"
         elif cond.breakout_close:
             kind = "breakout_close"
         else:
-            kind = "fvg_entered"
-        ict_tag = " | ICT Full Setup" if setup.meta.get("ict_bonus") else ""
-        return f"{self.name} | {setup.direction} | {kind}{ict_tag}"
+            kind = "displacement_confirm"
+        return f"{self.name} | {setup.direction} | {kind}"

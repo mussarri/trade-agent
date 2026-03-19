@@ -15,17 +15,12 @@ interface Props {
   stats: Stats | null
 }
 
-// v2.0 — 3 scenario colors
 const SCENARIO_COLORS: Record<string, string> = {
-  bos_continuation: '#3b82f6',   // blue
-  fvg_retrace:      '#8b5cf6',   // violet
-  liquidity_sweep:  '#f59e0b',   // amber
+  htf_pullback_continuation: '#2563eb',
 }
 
 const SCENARIO_LABELS: Record<string, string> = {
-  bos_continuation: 'BOS Cont.',
-  fvg_retrace:      'FVG Retrace',
-  liquidity_sweep:  'Liq. Sweep',
+  htf_pullback_continuation: 'HTF Pullback',
 }
 
 function getColor(name: string): string {

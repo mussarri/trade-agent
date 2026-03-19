@@ -14,16 +14,12 @@ class _CapturingAlert(BaseAlert):
     def __init__(self) -> None:
         self.payload_types: list[type] = []
         self.setup_count = 0
-        self.trigger_count = 0
 
     async def send(self, payload: dict) -> None:
         self.payload_types.append(type(payload))
 
     async def send_setup(self, payload: dict) -> None:
         self.setup_count += 1
-
-    async def send_trigger(self, payload: dict) -> None:
-        self.trigger_count += 1
 
 
 class _AlwaysTriggerScenario(BaseScenario):
@@ -59,10 +55,11 @@ class _AlwaysTriggerScenario(BaseScenario):
             conditions=TriggerCondition(close_confirm=True),
             confidence_factors={
                 "htf_alignment": True,
-                "fvg_presence": True,
-                "volume_confirmation": False,
-                "liquidity_confluence": False,
-                "session_time": True,
+                "pullback_active": True,
+                "zone_reaction": True,
+                "displacement": True,
+                "micro_bos": True,
+                "first_pullback": True,
             },
             timestamp=c.timestamp,
         )
@@ -116,7 +113,6 @@ def test_signal_store_insertion_and_alert_payload_dict():
     assert len(pipe.signal_store.active_signals) == 1
     assert alert.payload_types == [dict]
     assert alert.setup_count == 1
-    assert alert.trigger_count == 0
 
 
 def test_setup_and_entry_are_deduplicated():

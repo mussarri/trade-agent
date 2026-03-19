@@ -2,26 +2,21 @@ export type Direction = 'long' | 'short'
 
 export type SignalStatus =
   | 'active'
-  | 'tp1_hit'
-  | 'tp2_hit'
-  | 'tp3_hit'
-  | 'stopped'
-  | 'invalidated'
-  | 'expired'
 
-// v2.0 — 5 factors (clean_market_structure kaldırıldı)
+// Strategy confidence factors for HTF pullback continuation.
 export type ConfidenceFactors = {
   htf_alignment: boolean
-  fvg_or_ob_presence: boolean
-  volume_confirmation: boolean
-  liquidity_confluence: boolean
-  session_time: boolean
+  pullback_active: boolean
+  zone_reaction: boolean
+  displacement: boolean
+  micro_bos: boolean
+  first_pullback: boolean
 }
 
 export type Signal = {
   id: string
   scenario_name: string
-  alert_type: string        // "BOS_CONTINUATION" | "SMART_MONEY_ENTRY" | "LIQUIDITY_SWEEP"
+  alert_type: 'SETUP_DETECTED' | 'ENTRY_CONFIRMED'
   pair: string              // "BTCUSDT" format
   symbol: string
   direction: Direction

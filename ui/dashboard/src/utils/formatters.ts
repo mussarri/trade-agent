@@ -53,29 +53,13 @@ export function scoreBarColor(score: number): string {
 }
 
 export function statusLabel(status: SignalStatus): string {
-  const map: Record<SignalStatus, string> = {
-    active:      'Active',
-    tp1_hit:     'TP1 Hit',
-    tp2_hit:     'TP2 Hit',
-    tp3_hit:     'TP3 Hit',
-    stopped:     'Stopped',
-    invalidated: 'Invalidated',
-    expired:     'Expired',
-  }
-  return map[status] ?? status
+  if (status === 'active') return 'Active'
+  return status
 }
 
 export function statusColor(status: SignalStatus): string {
-  const map: Record<SignalStatus, string> = {
-    active:      'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
-    tp1_hit:     'bg-sky-500/20 text-sky-400 border border-sky-500/30',
-    tp2_hit:     'bg-blue-500/20 text-blue-400 border border-blue-500/30',
-    tp3_hit:     'bg-violet-500/20 text-violet-400 border border-violet-500/30',
-    stopped:     'bg-rose-500/20 text-rose-400 border border-rose-500/30',
-    invalidated: 'bg-slate-500/20 text-slate-400 border border-slate-500/30',
-    expired:     'bg-slate-700/40 text-slate-500 border border-slate-600/30',
-  }
-  return map[status] ?? 'bg-slate-700/40 text-slate-500 border border-slate-600/30'
+  if (status === 'active') return 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+  return 'bg-slate-700/40 text-slate-500 border border-slate-600/30'
 }
 
 export function sessionLabel(session: string): string {
@@ -97,9 +81,8 @@ export function trendColor(trend: string): string {
 
 export function alertTypeEmoji(alertType: string): string {
   const map: Record<string, string> = {
-    BOS_CONTINUATION:  '📈',
-    SMART_MONEY_ENTRY: '💰',
-    LIQUIDITY_SWEEP:   '🎯',
+    SETUP_DETECTED: '👀',
+    ENTRY_CONFIRMED: '✅',
   }
   return map[alertType] ?? '🔔'
 }

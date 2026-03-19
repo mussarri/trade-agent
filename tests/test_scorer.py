@@ -1,23 +1,23 @@
-"""Tests for the v2.0 confidence scorer."""
+"""Tests for confidence scoring in HTF pullback continuation."""
 from datetime import datetime, timezone
 
 from core.models import Setup, Trigger, TriggerCondition
-from scoring.scorer import ICT_FULL_SETUP_BONUS, MIN_RR_RATIO, MIN_SCORE, score
+from scoring.scorer import MIN_RR_RATIO, MIN_SCORE, score
 
 
-def _make_trigger(factors: dict[str, bool], ict_bonus: bool = False) -> Trigger:
+def _make_trigger(factors: dict[str, bool]) -> Trigger:
     setup = Setup(
         scenario_name="htf_pullback_continuation",
         alert_type="ENTRY_CONFIRMED",
         symbol="BTC/USDT",
-        timeframe="15m",
+        timeframe="5m",
         direction="long",
         entry_zone_low=49800.0,
         entry_zone_high=50000.0,
         swing_low=49000.0,
         swing_high=51000.0,
         invalidation_level=49000.0,
-        meta={"ict_bonus": ict_bonus},
+        meta={},
     )
     return Trigger(
         setup=setup,
@@ -36,7 +36,6 @@ def test_min_rr_default():
 
 
 def test_score_all_true():
-    """All strategy factors true -> 100."""
     t = _make_trigger({
         "htf_alignment": True,
         "pullback_active": True,
@@ -49,7 +48,6 @@ def test_score_all_true():
 
 
 def test_score_htf_only():
-    """Only HTF alignment -> 20."""
     t = _make_trigger({
         "htf_alignment": True,
         "pullback_active": False,
@@ -62,7 +60,6 @@ def test_score_htf_only():
 
 
 def test_score_htf_plus_pullback():
-    """htf_alignment(20) + pullback_active(15) = 35."""
     t = _make_trigger({
         "htf_alignment": True,
         "pullback_active": True,
@@ -74,36 +71,7 @@ def test_score_htf_plus_pullback():
     assert score(t) == 35
 
 
-def test_score_ict_bonus_via_meta():
-    """ICT bonus meta'dan alınıyor → +15, capped at 100."""
-    t = _make_trigger({
-        "htf_alignment": True,
-        "pullback_active": True,
-        "zone_reaction": True,
-        "displacement": True,
-        "micro_bos": True,
-        "first_pullback": True,
-    }, ict_bonus=True)
-    # 100 + 15 → capped at 100
-    assert score(t) == 100
-
-
-def test_score_ict_bonus_via_param():
-    """ICT bonus parametre ile de çalışıyor."""
-    t = _make_trigger({
-        "htf_alignment": True,
-        "pullback_active": True,
-        "zone_reaction": False,
-        "displacement": False,
-        "micro_bos": False,
-        "first_pullback": False,
-    })
-    # 20 + 15 + 15 = 50
-    assert score(t, ict_bonus=ICT_FULL_SETUP_BONUS) == 50
-
-
 def test_score_unknown_factors_ignored():
-    """Bilinmeyen faktörler yok sayılır."""
     t = _make_trigger({
         "htf_alignment": True,
         "unknown_factor": True,

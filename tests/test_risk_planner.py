@@ -31,6 +31,7 @@ def _trigger() -> Trigger:
 def test_fallback_rr_is_consistent_with_default_min_rr():
     planner = RiskPlanner()
     plan = planner.plan_from_trigger(_trigger(), atr=1.0)
+    assert plan.stop_loss == 98.0
     assert plan.rr_ratio >= 2.0
 
 

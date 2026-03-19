@@ -90,9 +90,7 @@ class Range:
 
 class TriggerCondition(BaseModel):
     close_confirm: bool = False
-    sweep_reversal: bool = False
-    volume_confirm: bool = False
-    fvg_entered: bool = False
+    displacement_confirm: bool = False
     breakout_close: bool = False
 
 
@@ -126,10 +124,10 @@ class Trigger(BaseModel):
 
 class AlertPayload(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    status: Literal["active", "tp1_hit", "tp2_hit", "tp3_hit", "stopped", "invalidated", "expired"] = "active"
-    type: Literal["ENTRY_CONFIRMED"] = "ENTRY_CONFIRMED"
+    status: Literal["active"] = "active"
+    type: Literal["SETUP_DETECTED", "ENTRY_CONFIRMED"] = "ENTRY_CONFIRMED"
     scenario_name: str
-    alert_type: Literal["ENTRY_CONFIRMED"] = "ENTRY_CONFIRMED"
+    alert_type: Literal["SETUP_DETECTED", "ENTRY_CONFIRMED"] = "ENTRY_CONFIRMED"
     symbol: str
     pair: str = ""          # "BTCUSDT" format for display
     timeframe: str          # LTF timeframe (e.g. "15m") — kept for backward compat

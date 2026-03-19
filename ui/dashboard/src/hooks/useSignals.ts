@@ -15,18 +15,26 @@ interface UseSignalsResult {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeSignal(raw: any, htf: string): Signal {
   const rp = raw.risk_plan ?? {};
+  const factors = raw.confidence_factors ?? {};
   return {
     id: raw.id ?? `${raw.symbol}|${raw.scenario_name}|${raw.timeframe}`,
     status: raw.status ?? "active",
     timeframe_ltf: raw.timeframe_ltf ?? raw.timeframe ?? "",
     timeframe_htf: raw.timeframe_htf ?? htf,
     scenario_name: raw.scenario_name ?? "",
-    alert_type: raw.alert_type ?? "",
+    alert_type: raw.alert_type === "SETUP_DETECTED" ? "SETUP_DETECTED" : "ENTRY_CONFIRMED",
     pair: raw.pair ?? (raw.symbol ?? "").replace("/", ""),
     symbol: raw.symbol ?? "",
     direction: raw.direction,
     score: raw.score,
-    confidence_factors: raw.confidence_factors ?? {},
+    confidence_factors: {
+      htf_alignment: !!factors.htf_alignment,
+      pullback_active: !!factors.pullback_active,
+      zone_reaction: !!factors.zone_reaction,
+      displacement: !!factors.displacement,
+      micro_bos: !!factors.micro_bos,
+      first_pullback: !!factors.first_pullback,
+    },
     htf_trend: raw.htf_trend ?? "",
     session: raw.session ?? "",
     ict_full_setup: raw.ict_full_setup ?? false,
