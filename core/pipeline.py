@@ -94,6 +94,7 @@ class Pipeline:
         symbol = ltf_ctx.symbol
         self._prune_registries()
         await self.dispatch_htf_structure_alerts(htf_ctx)
+        await self.dispatch_ltf_breakout_alerts(ltf_ctx)
 
         for scenario in self.scenarios:
             key = self._setup_key(symbol, scenario.name)
@@ -247,6 +248,17 @@ class Pipeline:
             await self._dispatch_structure_alerts(payload)
             if self.broadcaster:
                 maybe = self.broadcaster({"type": "structure_shift", "data": payload})
+                if asyncio.iscoroutine(maybe):
+                    await maybe
+
+    async def dispatch_ltf_breakout_alerts(self, ltf_ctx: StructureContext) -> None:
+        payloads = ltf_ctx.pop_pending_ltf_breakout_alerts()
+        if not payloads:
+            return
+        for payload in payloads:
+            await self._dispatch_structure_alerts(payload)
+            if self.broadcaster:
+                maybe = self.broadcaster({"type": "ltf_breakout", "data": payload})
                 if asyncio.iscoroutine(maybe):
                     await maybe
 

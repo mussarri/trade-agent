@@ -78,7 +78,7 @@ def _htf_bullish(symbol: str = "BTC/USDT") -> StructureContext:
 def _ltf(symbol: str = "BTC/USDT", tf: str = "15m") -> StructureContext:
     from core.candle import Candle
 
-    ctx = StructureContext(symbol=symbol, timeframe=tf)
+    ctx = StructureContext(symbol=symbol, timeframe=tf, is_ltf=True)
     now = datetime.now(tz=timezone.utc)
     for i in range(20):
         ctx.candles.append(
@@ -160,6 +160,37 @@ def test_pipeline_dispatches_htf_structure_shift_alerts():
     )
 
     ltf = _ltf()
+    result = asyncio.run(pipe.run(htf, ltf))
+    assert result == []
+    assert alert.structure_count == 1
+
+
+def test_pipeline_dispatches_ltf_5m_breakout_alerts():
+    from core.candle import Candle
+
+    alert = _CapturingAlert()
+    pipe = Pipeline(min_score=0, min_rr_ratio=0, alerts=[alert], enabled_scenarios=[])
+
+    htf = _htf_bullish()
+    ltf = _ltf(tf="5m")
+    ltf._append_bos_if_new(
+        candle=Candle(
+            symbol="BTC/USDT",
+            timeframe="5m",
+            timestamp=datetime.now(tz=timezone.utc),
+            open=100.0,
+            high=101.0,
+            low=99.0,
+            close=100.9,
+            volume=110.0,
+            is_closed=True,
+        ),
+        direction="bullish",
+        level=100.5,
+        structure_kind="internal",
+        displacement=False,
+    )
+
     result = asyncio.run(pipe.run(htf, ltf))
     assert result == []
     assert alert.structure_count == 1

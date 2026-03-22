@@ -58,6 +58,26 @@ class DiscordAlert(BaseAlert):
         }
 
     def _build_structure_embed(self, payload: dict) -> dict:
+        alert_type = payload.get("alert_type", "HTF_STRUCTURE_SHIFT")
+        if alert_type in {"LTF_5M_HIGH_BREAKOUT", "LTF_5M_LOW_BREAKOUT"}:
+            is_high_break = alert_type == "LTF_5M_HIGH_BREAKOUT"
+            color = 0x00CC66 if is_high_break else 0xCC6600
+            symbol = payload.get("symbol", "")
+            timeframe = payload.get("timeframe_ltf", payload.get("timeframe", ""))
+            fields = [
+                {"name": "Direction", "value": str(payload.get("direction", "")).upper(), "inline": True},
+                {"name": "Broken Level", "value": f"{float(payload.get('broken_level', 0.0)):.6f}", "inline": True},
+                {"name": "Current Close", "value": f"{float(payload.get('current_close', 0.0)):.6f}", "inline": True},
+                {"name": "Displacement", "value": "Yes" if payload.get("displacement") else "No", "inline": True},
+                {"name": "Reason", "value": str(payload.get("reason", "")), "inline": False},
+            ]
+            return {
+                "title": f"📈 {alert_type} — {symbol}",
+                "color": color,
+                "fields": fields,
+                "footer": {"text": f"trade-agent • {timeframe} • {payload.get('timestamp', '')}"},
+            }
+
         is_bull = payload.get("alert_type") == "HTF_STRUCTURE_SHIFT_BULLISH"
         color = 0x00CC66 if is_bull else 0xCC3333
         symbol = payload.get("symbol", "")

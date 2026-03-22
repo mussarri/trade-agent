@@ -41,9 +41,11 @@ class EmailAlert(BaseAlert):
 
     async def send_structure(self, payload: dict) -> None:
         msg = EmailMessage()
+        alert_type = payload.get("alert_type", "HTF_STRUCTURE_SHIFT")
+        direction = str(payload.get("direction", payload.get("new_htf_trend", ""))).upper()
         msg["From"] = self.username
         msg["To"] = self.to_email
-        msg["Subject"] = f"HTF Structure Shift: {payload.get('symbol', '')} {payload.get('new_htf_trend', '').upper()}"
+        msg["Subject"] = f"{alert_type}: {payload.get('symbol', '')} {direction}"
         msg.set_content(self._format_structure_text(payload))
         use_tls = self.port == 465
         try:
@@ -72,6 +74,19 @@ class EmailAlert(BaseAlert):
         )
 
     def _format_structure_text(self, payload: dict) -> str:
+        alert_type = payload.get("alert_type", "HTF_STRUCTURE_SHIFT")
+        if alert_type in {"LTF_5M_HIGH_BREAKOUT", "LTF_5M_LOW_BREAKOUT"}:
+            return (
+                f"Alert: {alert_type}\n"
+                f"Symbol: {payload.get('symbol', '')}\n"
+                f"Timeframe: {payload.get('timeframe_ltf', payload.get('timeframe', ''))}\n"
+                f"Direction: {str(payload.get('direction', '')).upper()}\n"
+                f"Broken Level: {float(payload.get('broken_level', 0.0)):.6f}\n"
+                f"Current Close: {float(payload.get('current_close', 0.0)):.6f}\n"
+                f"Displacement: {'Yes' if payload.get('displacement') else 'No'}\n"
+                f"Reason: {payload.get('reason', '')}\n"
+            )
+
         return (
             f"Alert: {payload.get('alert_type', 'HTF_STRUCTURE_SHIFT')}\n"
             f"Symbol: {payload.get('symbol', '')}\n"

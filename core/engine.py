@@ -125,12 +125,14 @@ class SignalEngine:
                     await pipeline.run(htf_ctx, ctx)
 
     async def run_fixture(self, candles: Iterable[Candle], symbol: str, timeframe: str) -> None:
+        ltf_set = {l for _, l in self.tf_pairs}
         feed = FixtureFeed(
             symbol=symbol,
             timeframe=timeframe,
             candles=list(candles),
             on_candle_closed=self.on_candle_closed,
             context_kwargs=self.structure_context_kwargs,
+            is_ltf=timeframe in ltf_set,
         )
         await feed.run(delay=0.0)
 
@@ -173,6 +175,7 @@ class SignalEngine:
             exchange.set_sandbox_mode(True)
 
         all_tfs = {tf for pair in self.tf_pairs for tf in pair}
+        ltf_set = {l for _, l in self.tf_pairs}
         try:
             tasks = []
             for symbol in self.symbols:
@@ -183,6 +186,7 @@ class SignalEngine:
                             self.on_candle_closed,
                             on_history_ready=self.seed_context,
                             context_kwargs=self.structure_context_kwargs,
+                            is_ltf=tf in ltf_set,
                         ).start()
                     ))
             await asyncio.gather(*tasks)
