@@ -25,10 +25,17 @@ from risk.planner import RiskPlanner
 
 SYMBOL_BASE_PRICES = {
     "BTC/USDT": 83000.0,
+    "BTC/USDT:USDT": 83000.0,
     "ETH/USDT": 1900.0,
+    "ETH/USDT:USDT": 1900.0,
     "SOL/USDT": 130.0,
+    "SOL/USDT:USDT": 130.0,
+    "XRP/USDT": 2.2,
+    "XRP/USDT:USDT": 2.2,
     "BNB/USDT": 580.0,
+    "BNB/USDT:USDT": 580.0,
     "AVAX/USDT": 22.0,
+    "AVAX/USDT:USDT": 22.0,
 }
 DEFAULT_BASE = 100.0
 
@@ -162,14 +169,23 @@ class SignalEngine:
                 await self.run_fixture(htf_candles, symbol, h)
                 await self.run_fixture(ltf_candles, symbol, l)
 
-    async def run_live(self, exchange_id: str = "binance", sandbox: bool = False) -> None:
+    async def run_live(
+        self,
+        exchange_id: str = "binance",
+        sandbox: bool = False,
+        market_type: str = "future",
+    ) -> None:
         if ccxtpro is None:
             raise RuntimeError("ccxt[pro] is not installed — pip install ccxt[pro]")
 
         exchange_cls = getattr(ccxtpro, exchange_id)
+        market_type = market_type.lower().strip()
+        if market_type not in {"spot", "future", "swap"}:
+            raise ValueError(f"Unsupported market_type: {market_type}")
+
         exchange = exchange_cls({
             "enableRateLimit": True,
-            "options": {"defaultType": "spot"},
+            "options": {"defaultType": market_type},
         })
         if sandbox:
             exchange.set_sandbox_mode(True)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -11,6 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class ExchangeConfig(BaseModel):
     id: str = "binance"
     sandbox: bool = False
+    market_type: Literal["spot", "future", "swap"] = "future"
 
 
 class TimeframesConfig(BaseModel):

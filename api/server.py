@@ -49,7 +49,11 @@ def create_app(engine: SignalEngine) -> FastAPI:
             _log = logging.getLogger(__name__)
             cfg, _ = load_settings()
             live_task = asyncio.create_task(
-                engine.run_live(exchange_id=cfg.exchange.id, sandbox=cfg.exchange.sandbox)
+                engine.run_live(
+                    exchange_id=cfg.exchange.id,
+                    sandbox=cfg.exchange.sandbox,
+                    market_type=cfg.exchange.market_type,
+                )
             )
             live_task.add_done_callback(
                 lambda t: _log.error("run_live crashed: %s", t.exception())

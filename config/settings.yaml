@@ -1,12 +1,13 @@
 exchange:
   id: binance
   sandbox: false
+  market_type: future
 
 symbols:
-  - BTC/USDT
-  - ETH/USDT
-  - SOL/USDT
-  - XRP/USDT
+  - BTC/USDT:USDT
+  - ETH/USDT:USDT
+  - SOL/USDT:USDT
+  - XRP/USDT:USDT
   
 
 timeframes:
