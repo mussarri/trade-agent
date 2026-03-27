@@ -106,6 +106,7 @@ class StructureContext:
     htf_structure_shift_events: list[HtfStructureShiftEvent] = field(default_factory=list)
     _pending_htf_shift_alerts: list[dict] = field(default_factory=list)
     _pending_ltf_breakout_alerts: list[dict] = field(default_factory=list)
+    _last_ltf_breakout_direction: str | None = None  # "bullish" | "bearish" — tracks last alerted direction
     _htf_shift_dedupe_keys: set[str] = field(default_factory=set)
     _htf_shift_dedupe_order: list[str] = field(default_factory=list)
 
@@ -296,23 +297,26 @@ class StructureContext:
             )
         )
         if structure_kind == "internal" and self.is_ltf:
-            is_high_break = direction == "bullish"
-            self._pending_ltf_breakout_alerts.append(
-                {
-                    "type": "LTF_BREAKOUT",
-                    "alert_type": "LTF_5M_HIGH_BREAKOUT" if is_high_break else "LTF_5M_LOW_BREAKOUT",
-                    "symbol": self.symbol,
-                    "pair": self.symbol.replace("/", ""),
-                    "timeframe": self.timeframe,
-                    "timeframe_ltf": self.timeframe,
-                    "direction": "long" if is_high_break else "short",
-                    "broken_level": level,
-                    "current_close": candle.close,
-                    "displacement": displacement,
-                    "reason": f"5m close broke internal swing {'high' if is_high_break else 'low'}",
-                    "timestamp": candle.timestamp.isoformat(),
-                }
-            )
+            # Only alert when direction alternates: high→low or low→high sequence required
+            if self._last_ltf_breakout_direction is None or self._last_ltf_breakout_direction != direction:
+                is_high_break = direction == "bullish"
+                self._last_ltf_breakout_direction = direction
+                self._pending_ltf_breakout_alerts.append(
+                    {
+                        "type": "LTF_BREAKOUT",
+                        "alert_type": "LTF_5M_HIGH_BREAKOUT" if is_high_break else "LTF_5M_LOW_BREAKOUT",
+                        "symbol": self.symbol,
+                        "pair": self.symbol.replace("/", ""),
+                        "timeframe": self.timeframe,
+                        "timeframe_ltf": self.timeframe,
+                        "direction": "long" if is_high_break else "short",
+                        "broken_level": level,
+                        "current_close": candle.close,
+                        "displacement": displacement,
+                        "reason": f"5m close broke internal swing {'high' if is_high_break else 'low'}",
+                        "timestamp": candle.timestamp.isoformat(),
+                    }
+                )
 
     def _append_choch_if_new(self, *, candle: Candle, direction: str) -> None:
         if self.choch_events and self.choch_events[-1].direction == direction:
