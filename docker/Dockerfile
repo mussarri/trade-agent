@@ -13,6 +13,7 @@ COPY alerts ./alerts
 COPY api ./api
 COPY config ./config
 COPY backtest ./backtest
+COPY feeds ./feeds
 COPY tests ./tests
 COPY main.py ./main.py
 
