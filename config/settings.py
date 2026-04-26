@@ -77,6 +77,16 @@ class ScenarioConfig(BaseModel):
     )
 
 
+class TwelveDataConfig(BaseModel):
+    enabled: bool = False
+    symbols: list[str] = Field(default_factory=list)
+    timeframe: str = "1h"
+    scenarios: list[str] = Field(default_factory=lambda: ["forex_1h_pullback"])
+    # Wider pivots suit 1h forex structure better than the crypto defaults.
+    htf_pivot_length: int = 7
+    ltf_pivot_length: int = 4
+
+
 class AppConfig(BaseModel):
     exchange: ExchangeConfig = Field(default_factory=ExchangeConfig)
     symbols: list[str] = Field(default_factory=lambda: ["BTC/USDT", "ETH/USDT"])
@@ -86,6 +96,7 @@ class AppConfig(BaseModel):
     structure: StructureConfig = Field(default_factory=StructureConfig)
     alerts: AlertsConfig = Field(default_factory=AlertsConfig)
     scenarios: ScenarioConfig = Field(default_factory=ScenarioConfig)
+    twelvedata: TwelveDataConfig = Field(default_factory=TwelveDataConfig)
 
 
 class EnvSettings(BaseSettings):
@@ -111,6 +122,8 @@ class EnvSettings(BaseSettings):
     email_user: str = ""
     email_password: str = ""
     email_to: str = ""
+
+    twelvedata_api_key: str = ""
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000

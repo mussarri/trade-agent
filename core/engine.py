@@ -36,6 +36,10 @@ SYMBOL_BASE_PRICES = {
     "BNB/USDT:USDT": 580.0,
     "AVAX/USDT": 22.0,
     "AVAX/USDT:USDT": 22.0,
+    "XAU/USD": 3300.0,
+    "EUR/USD": 1.08,
+    "GBP/USD": 1.27,
+    "USD/JPY": 155.0,
 }
 DEFAULT_BASE = 100.0
 
@@ -64,6 +68,7 @@ class SignalEngine:
         min_swing_distance_atr_mult: float = 0.8,
         equal_level_tolerance: float = 0.001,
         use_close_for_break_confirmation: bool = True,
+        symbol_tf_groups: list[dict] | None = None,
     ):
         self.symbols = symbols
         # Paired combinations: htf[i] × ltf[i]  e.g. [(1h,5m), (4h,15m)]
@@ -98,6 +103,25 @@ class SignalEngine:
             for h, l in self.tf_pairs
         }
 
+        # Symbol-scoped routing: each pipeline only handles its designated symbols.
+        # None means "no restriction" (all symbols allowed) — preserves backward compat.
+        self._pipeline_symbol_scope: dict[tuple[str, str], frozenset[str] | None] = {}
+        if symbol_tf_groups is not None:
+            for group in symbol_tf_groups:
+                pair = (group["htf"], group["ltf"])
+                syms = frozenset(group["symbols"])
+                existing = self._pipeline_symbol_scope.get(pair)
+                if existing is None and pair in self._pipeline_symbol_scope:
+                    # Was explicitly set to None (all symbols), keep it unrestricted.
+                    pass
+                else:
+                    self._pipeline_symbol_scope[pair] = (
+                        existing | syms if existing is not None else syms
+                    )
+        else:
+            for pair in self.tf_pairs:
+                self._pipeline_symbol_scope[pair] = None
+
     def set_broadcaster(self, broadcaster) -> None:
         for pipeline in self.pipelines.values():
             pipeline.broadcaster = broadcaster
@@ -124,6 +148,9 @@ class SignalEngine:
     async def on_candle_closed(self, ctx: StructureContext, candle: Candle) -> None:
         self.contexts[(ctx.symbol, ctx.timeframe)] = ctx
         for (h, l), pipeline in self.pipelines.items():
+            scope = self._pipeline_symbol_scope.get((h, l))
+            if scope is not None and ctx.symbol not in scope:
+                continue
             if ctx.timeframe == h:
                 await pipeline.dispatch_htf_structure_alerts(ctx)
             if ctx.timeframe == l:
@@ -145,35 +172,35 @@ class SignalEngine:
 
     async def seed_demo_data(self, bars: int = 200) -> None:
         now = datetime.now(tz=timezone.utc)
+        seeded: set[tuple[str, str]] = set()
         for symbol in self.symbols:
             base = SYMBOL_BASE_PRICES.get(symbol, DEFAULT_BASE)
             for h, l in self.tf_pairs:
-                h_mins = _tf_minutes(h)
-                l_mins = _tf_minutes(l)
-                htf_candles = self._make_synthetic_candles(
-                    symbol=symbol,
-                    timeframe=h,
-                    start=now - timedelta(minutes=bars * h_mins),
-                    bars=bars,
-                    step_minutes=h_mins,
-                    base=base,
-                )
-                ltf_candles = self._make_synthetic_candles(
-                    symbol=symbol,
-                    timeframe=l,
-                    start=now - timedelta(minutes=bars * l_mins),
-                    bars=bars,
-                    step_minutes=l_mins,
-                    base=base,
-                )
-                await self.run_fixture(htf_candles, symbol, h)
-                await self.run_fixture(ltf_candles, symbol, l)
+                scope = self._pipeline_symbol_scope.get((h, l))
+                if scope is not None and symbol not in scope:
+                    continue
+                for tf in dict.fromkeys([h, l]):  # preserves order, deduplicates h==l
+                    if (symbol, tf) in seeded:
+                        continue
+                    seeded.add((symbol, tf))
+                    tf_mins = _tf_minutes(tf)
+                    candles = self._make_synthetic_candles(
+                        symbol=symbol,
+                        timeframe=tf,
+                        start=now - timedelta(minutes=bars * tf_mins),
+                        bars=bars,
+                        step_minutes=tf_mins,
+                        base=base,
+                    )
+                    await self.run_fixture(candles, symbol, tf)
 
     async def run_live(
         self,
         exchange_id: str = "binance",
         sandbox: bool = False,
         market_type: str = "future",
+        symbols: list[str] | None = None,
+        tf_pairs: list[tuple[str, str]] | None = None,
     ) -> None:
         if ccxtpro is None:
             raise RuntimeError("ccxt[pro] is not installed — pip install ccxt[pro]")
@@ -190,11 +217,13 @@ class SignalEngine:
         if sandbox:
             exchange.set_sandbox_mode(True)
 
-        all_tfs = {tf for pair in self.tf_pairs for tf in pair}
-        ltf_set = {l for _, l in self.tf_pairs}
+        target_symbols = symbols if symbols is not None else self.symbols
+        target_pairs = tf_pairs if tf_pairs is not None else self.tf_pairs
+        all_tfs = {tf for pair in target_pairs for tf in pair}
+        ltf_set = {l for _, l in target_pairs}
         try:
             tasks = []
-            for symbol in self.symbols:
+            for symbol in target_symbols:
                 for tf in all_tfs:
                     tasks.append(asyncio.create_task(
                         DataFeed(
@@ -208,6 +237,30 @@ class SignalEngine:
             await asyncio.gather(*tasks)
         finally:
             await exchange.close()
+
+    async def run_live_twelvedata(
+        self,
+        api_key: str,
+        symbols: list[str],
+        timeframe: str = "1h",
+    ) -> None:
+        """Start Twelve Data REST polling feeds for the given symbols."""
+        from feeds.twelve_data_feed import TwelveDataFeed
+
+        tasks = [
+            asyncio.create_task(
+                TwelveDataFeed(
+                    symbol=symbol,
+                    interval=timeframe,
+                    api_key=api_key,
+                    on_candle_closed=self.on_candle_closed,
+                    on_history_ready=self.seed_context,
+                    context_kwargs=self.structure_context_kwargs,
+                ).start()
+            )
+            for symbol in symbols
+        ]
+        await asyncio.gather(*tasks)
 
     def _make_synthetic_candles(
         self,

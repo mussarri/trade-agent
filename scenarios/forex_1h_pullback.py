@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-from core.candle import Candle
 from core.context import StructureContext
 from core.models import Setup, Trigger, TriggerCondition
 from scenarios._ict_helpers import (
@@ -20,12 +17,20 @@ from scenarios._ict_helpers import (
 from scenarios.base import BaseScenario
 
 
-class HtfPullbackContinuationScenario(BaseScenario):
-    name = "htf_pullback_continuation"
+class Forex1hPullbackScenario(BaseScenario):
+    """HTF pullback continuation strategy adapted for single 1h timeframe.
+
+    Used for instruments sourced from Twelve Data (XAU/USD, EUR/USD, etc.).
+    Passes the same 1h StructureContext as both htf_ctx and ltf_ctx:
+    - external_structure_labels → trend (longer pivot = "HTF" proxy)
+    - internal structure_labels → pullback detection ("LTF" proxy)
+    """
+
+    name = "forex_1h_pullback"
     alert_type = "SETUP_DETECTED"
 
     def detect_setup(self, htf_ctx: StructureContext, ltf_ctx: StructureContext) -> Setup | None:
-        if htf_ctx.timeframe != "1h" or ltf_ctx.timeframe != "5m":
+        if ltf_ctx.timeframe != "1h":
             return None
         if not ltf_ctx.candles:
             return None
@@ -52,7 +57,6 @@ class HtfPullbackContinuationScenario(BaseScenario):
         if not _overlaps_zone(last, zone_low, zone_high, pad=pad):
             return None
 
-        # First pullback rule: current zone touch must be the first touch after displacement.
         prior_touches = 0
         for c in ltf_ctx.candles[displacement_idx + 1 : -1]:
             if _overlaps_zone(c, zone_low, zone_high):
@@ -81,7 +85,7 @@ class HtfPullbackContinuationScenario(BaseScenario):
             swing_low=swing_low,
             swing_high=swing_high,
             invalidation_level=invalidation,
-            max_candles=24,
+            max_candles=20,
             meta={
                 "state": "NEW",
                 "trend": trend,

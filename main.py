@@ -41,21 +41,47 @@ def build_engine() -> SignalEngine:
         from alerts.webhook import WebhookAlert
         alerts.append(WebhookAlert(url=env.webhook_url, secret=env.webhook_secret))
 
+    # Build combined symbol list and tf_pairs, with symbol-scoped routing when
+    # Twelve Data is enabled so crypto and forex pipelines don't cross-fire.
+    all_symbols = list(cfg.symbols)
+    htf_list = list(cfg.timeframes.htf)
+    ltf_list = list(cfg.timeframes.ltf)
+    all_scenarios = list(cfg.scenarios.enabled)
+    symbol_tf_groups = None
+
+    if cfg.twelvedata.enabled:
+        td_tf = cfg.twelvedata.timeframe
+        all_symbols.extend(cfg.twelvedata.symbols)
+        htf_list.append(td_tf)
+        ltf_list.append(td_tf)
+        all_scenarios = list(dict.fromkeys(all_scenarios + cfg.twelvedata.scenarios))
+        symbol_tf_groups = [
+            {"symbols": cfg.symbols, "htf": h, "ltf": l}
+            for h, l in zip(cfg.timeframes.htf, cfg.timeframes.ltf)
+        ] + [
+            {
+                "symbols": cfg.twelvedata.symbols,
+                "htf": td_tf,
+                "ltf": td_tf,
+            }
+        ]
+
     return SignalEngine(
-        symbols=cfg.symbols,
-        htf=cfg.timeframes.htf,
-        ltf=cfg.timeframes.ltf,
+        symbols=all_symbols,
+        htf=htf_list,
+        ltf=ltf_list,
         min_score=cfg.scoring.min_score,
         min_rr_ratio=cfg.scoring.min_rr_ratio,
         risk_per_trade_pct=cfg.risk.risk_per_trade_pct,
         atr_sl_multiplier=cfg.risk.atr_sl_multiplier,
-        enabled_scenarios=cfg.scenarios.enabled,
+        enabled_scenarios=all_scenarios,
         alerts=alerts,
         htf_pivot_length=cfg.structure.htf_pivot_length,
         ltf_pivot_length=cfg.structure.ltf_pivot_length,
         min_swing_distance_atr_mult=cfg.structure.min_swing_distance_atr_mult,
         equal_level_tolerance=cfg.structure.equal_level_tolerance,
         use_close_for_break_confirmation=cfg.structure.use_close_for_break_confirmation,
+        symbol_tf_groups=symbol_tf_groups,
     )
 
 

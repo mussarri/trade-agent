@@ -48,3 +48,14 @@ alerts:
 
 scenarios:
   enabled: ["htf_pullback_continuation"]
+
+twelvedata:
+  enabled: true
+  symbols:
+    - "XAU/USD"
+    - "EUR/USD"
+  timeframe: "1h"
+  scenarios:
+    - "forex_1h_pullback"
+  htf_pivot_length: 7
+  ltf_pivot_length: 4

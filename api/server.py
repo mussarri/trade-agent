@@ -41,31 +41,57 @@ def create_app(engine: SignalEngine) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        live_task: asyncio.Task | None = None
+        live_tasks: list[asyncio.Task] = []
         mode = os.getenv("ENGINE_MODE", "demo").lower()
         if mode == "live":
-            from config.settings import load_settings
             import logging
+
+            from config.settings import load_settings
+
             _log = logging.getLogger(__name__)
-            cfg, _ = load_settings()
-            live_task = asyncio.create_task(
+            cfg, env = load_settings()
+
+            # Crypto feeds via Binance
+            crypto_task = asyncio.create_task(
                 engine.run_live(
                     exchange_id=cfg.exchange.id,
                     sandbox=cfg.exchange.sandbox,
                     market_type=cfg.exchange.market_type,
+                    symbols=cfg.symbols,
+                    tf_pairs=list(zip(cfg.timeframes.htf, cfg.timeframes.ltf)),
                 )
             )
-            live_task.add_done_callback(
+            crypto_task.add_done_callback(
                 lambda t: _log.error("run_live crashed: %s", t.exception())
-                if not t.cancelled() and t.exception() else None
+                if not t.cancelled() and t.exception()
+                else None
             )
+            live_tasks.append(crypto_task)
+
+            # Forex / commodity feeds via Twelve Data
+            if cfg.twelvedata.enabled and env.twelvedata_api_key:
+                forex_task = asyncio.create_task(
+                    engine.run_live_twelvedata(
+                        api_key=env.twelvedata_api_key,
+                        symbols=cfg.twelvedata.symbols,
+                        timeframe=cfg.twelvedata.timeframe,
+                    )
+                )
+                forex_task.add_done_callback(
+                    lambda t: _log.error("run_live_twelvedata crashed: %s", t.exception())
+                    if not t.cancelled() and t.exception()
+                    else None
+                )
+                live_tasks.append(forex_task)
         else:
             await engine.seed_demo_data(bars=200)
+
         yield
-        if live_task is not None:
-            live_task.cancel()
+
+        for task in live_tasks:
+            task.cancel()
             try:
-                await live_task
+                await task
             except (asyncio.CancelledError, Exception):
                 pass
 
