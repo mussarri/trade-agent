@@ -247,6 +247,7 @@ class SignalEngine:
         """Start Twelve Data REST polling feeds for the given symbols."""
         from feeds.twelve_data_feed import TwelveDataFeed
 
+        ltf_set = {l for _, l in self.tf_pairs}
         tasks = [
             asyncio.create_task(
                 TwelveDataFeed(
@@ -256,6 +257,7 @@ class SignalEngine:
                     on_candle_closed=self.on_candle_closed,
                     on_history_ready=self.seed_context,
                     context_kwargs=self.structure_context_kwargs,
+                    is_ltf=timeframe in ltf_set,
                 ).start()
             )
             for symbol in symbols

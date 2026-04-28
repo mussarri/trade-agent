@@ -34,12 +34,13 @@ class TwelveDataFeed:
         on_candle_closed: OnCandleClosed,
         on_history_ready: OnHistoryReady | None = None,
         context_kwargs: dict | None = None,
+        is_ltf: bool = False,
     ) -> None:
         self.symbol = symbol
         self.interval = interval
         self.api_key = api_key
         self.context = StructureContext(
-            symbol=symbol, timeframe=interval, **(context_kwargs or {})
+            symbol=symbol, timeframe=interval, is_ltf=is_ltf, **(context_kwargs or {})
         )
         self._on_candle_closed = on_candle_closed
         self._on_history_ready = on_history_ready

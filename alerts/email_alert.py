@@ -74,8 +74,8 @@ class EmailAlert(BaseAlert):
         )
 
     def _format_structure_text(self, payload: dict) -> str:
-        alert_type = payload.get("alert_type", "HTF_STRUCTURE_SHIFT")
-        if alert_type in {"LTF_5M_HIGH_BREAKOUT", "LTF_5M_LOW_BREAKOUT"}:
+        alert_type = str(payload.get("alert_type", "HTF_STRUCTURE_SHIFT"))
+        if alert_type.startswith("LTF_") and alert_type.endswith("_BREAKOUT"):
             return (
                 f"Alert: {alert_type}\n"
                 f"Symbol: {payload.get('symbol', '')}\n"

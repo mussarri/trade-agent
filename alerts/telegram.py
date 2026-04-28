@@ -13,8 +13,6 @@ EMOJI = {
     "ENTRY_CONFIRMED": "✅",
     "HTF_STRUCTURE_SHIFT_BULLISH": "🟢",
     "HTF_STRUCTURE_SHIFT_BEARISH": "🔴",
-    "LTF_5M_HIGH_BREAKOUT": "🚀",
-    "LTF_5M_LOW_BREAKOUT": "⚠️",
 }
 
 
@@ -89,9 +87,9 @@ class TelegramAlert(BaseAlert):
         )
 
     def _format_structure_shift(self, payload: dict) -> str:
-        alert_type = payload.get("alert_type", "HTF_STRUCTURE_SHIFT")
-        if alert_type in {"LTF_5M_HIGH_BREAKOUT", "LTF_5M_LOW_BREAKOUT"}:
-            icon = EMOJI.get(alert_type, "📉")
+        alert_type = str(payload.get("alert_type", "HTF_STRUCTURE_SHIFT"))
+        if alert_type.startswith("LTF_") and alert_type.endswith("_BREAKOUT"):
+            icon = "🚀" if "_HIGH_" in alert_type else "⚠️"
             symbol = payload.get("symbol", "")
             timeframe = payload.get("timeframe_ltf", payload.get("timeframe", ""))
             level = float(payload.get("broken_level", 0.0))

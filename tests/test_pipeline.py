@@ -15,6 +15,7 @@ class _CapturingAlert(BaseAlert):
         self.payload_types: list[type] = []
         self.setup_count = 0
         self.structure_count = 0
+        self.structure_payloads: list[dict] = []
 
     async def send(self, payload: dict) -> None:
         self.payload_types.append(type(payload))
@@ -24,6 +25,7 @@ class _CapturingAlert(BaseAlert):
 
     async def send_structure(self, payload: dict) -> None:
         self.structure_count += 1
+        self.structure_payloads.append(payload)
 
 
 class _AlwaysTriggerScenario(BaseScenario):
@@ -194,3 +196,38 @@ def test_pipeline_dispatches_ltf_5m_breakout_alerts():
     result = asyncio.run(pipe.run(htf, ltf))
     assert result == []
     assert alert.structure_count == 1
+    assert alert.structure_payloads[0]["alert_type"] == "LTF_5M_HIGH_BREAKOUT"
+
+
+def test_pipeline_dispatches_gold_1h_breakout_alerts():
+    from core.candle import Candle
+
+    alert = _CapturingAlert()
+    pipe = Pipeline(min_score=0, min_rr_ratio=0, alerts=[alert], enabled_scenarios=[])
+
+    htf = _htf_bullish(symbol="XAU/USD")
+    ltf = _ltf(symbol="XAU/USD", tf="1h")
+    ltf._append_bos_if_new(
+        candle=Candle(
+            symbol="XAU/USD",
+            timeframe="1h",
+            timestamp=datetime.now(tz=timezone.utc),
+            open=3300.0,
+            high=3310.0,
+            low=3295.0,
+            close=3308.0,
+            volume=110.0,
+            is_closed=True,
+        ),
+        direction="bullish",
+        level=3305.0,
+        structure_kind="internal",
+        displacement=False,
+    )
+
+    result = asyncio.run(pipe.run(htf, ltf))
+    assert result == []
+    assert alert.structure_count == 1
+    assert alert.structure_payloads[0]["alert_type"] == "LTF_1H_HIGH_BREAKOUT"
+    assert alert.structure_payloads[0]["symbol"] == "XAU/USD"
+    assert alert.structure_payloads[0]["timeframe_ltf"] == "1h"

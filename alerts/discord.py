@@ -58,9 +58,9 @@ class DiscordAlert(BaseAlert):
         }
 
     def _build_structure_embed(self, payload: dict) -> dict:
-        alert_type = payload.get("alert_type", "HTF_STRUCTURE_SHIFT")
-        if alert_type in {"LTF_5M_HIGH_BREAKOUT", "LTF_5M_LOW_BREAKOUT"}:
-            is_high_break = alert_type == "LTF_5M_HIGH_BREAKOUT"
+        alert_type = str(payload.get("alert_type", "HTF_STRUCTURE_SHIFT"))
+        if alert_type.startswith("LTF_") and alert_type.endswith("_BREAKOUT"):
+            is_high_break = "_HIGH_" in alert_type
             color = 0x00CC66 if is_high_break else 0xCC6600
             symbol = payload.get("symbol", "")
             timeframe = payload.get("timeframe_ltf", payload.get("timeframe", ""))

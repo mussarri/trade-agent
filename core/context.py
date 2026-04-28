@@ -300,11 +300,13 @@ class StructureContext:
             # Only alert when direction alternates: high→low or low→high sequence required
             if self._last_ltf_breakout_direction is None or self._last_ltf_breakout_direction != direction:
                 is_high_break = direction == "bullish"
+                tf_label = self.timeframe.upper()
+                side = "HIGH" if is_high_break else "LOW"
                 self._last_ltf_breakout_direction = direction
                 self._pending_ltf_breakout_alerts.append(
                     {
                         "type": "LTF_BREAKOUT",
-                        "alert_type": "LTF_5M_HIGH_BREAKOUT" if is_high_break else "LTF_5M_LOW_BREAKOUT",
+                        "alert_type": f"LTF_{tf_label}_{side}_BREAKOUT",
                         "symbol": self.symbol,
                         "pair": self.symbol.replace("/", ""),
                         "timeframe": self.timeframe,
@@ -313,7 +315,7 @@ class StructureContext:
                         "broken_level": level,
                         "current_close": candle.close,
                         "displacement": displacement,
-                        "reason": f"5m close broke internal swing {'high' if is_high_break else 'low'}",
+                        "reason": f"{self.timeframe} close broke internal swing {'high' if is_high_break else 'low'}",
                         "timestamp": candle.timestamp.isoformat(),
                     }
                 )
