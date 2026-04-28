@@ -54,7 +54,7 @@ twelvedata:
   symbols:
     - "XAU/USD"
     - "EUR/USD"
-  timeframe: "1h"
+  timeframe: "5min"
   scenarios:
     - "forex_1h_pullback"
   htf_pivot_length: 7

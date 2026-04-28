@@ -22,8 +22,8 @@ class TwelveDataFeed:
     """Polls Twelve Data REST API for closed OHLCV candles.
 
     Loads history at startup, then wakes up 90 seconds after each candle
-    close to fetch the just-closed bar.  Only 1h interval is supported for
-    now (forex/commodity instruments like XAU/USD and EUR/USD).
+    close to fetch the just-closed bar for forex/commodity instruments like
+    XAU/USD and EUR/USD.
     """
 
     def __init__(

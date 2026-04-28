@@ -18,19 +18,20 @@ from scenarios.base import BaseScenario
 
 
 class Forex1hPullbackScenario(BaseScenario):
-    """HTF pullback continuation strategy adapted for single 1h timeframe.
+    """HTF pullback continuation strategy adapted for a single Twelve Data timeframe.
 
     Used for instruments sourced from Twelve Data (XAU/USD, EUR/USD, etc.).
-    Passes the same 1h StructureContext as both htf_ctx and ltf_ctx:
+    Passes the same StructureContext as both htf_ctx and ltf_ctx:
     - external_structure_labels → trend (longer pivot = "HTF" proxy)
     - internal structure_labels → pullback detection ("LTF" proxy)
     """
 
     name = "forex_1h_pullback"
     alert_type = "SETUP_DETECTED"
+    supported_timeframes = {"1h", "5min"}
 
     def detect_setup(self, htf_ctx: StructureContext, ltf_ctx: StructureContext) -> Setup | None:
-        if ltf_ctx.timeframe != "1h":
+        if ltf_ctx.timeframe not in self.supported_timeframes:
             return None
         if not ltf_ctx.candles:
             return None

@@ -199,18 +199,18 @@ def test_pipeline_dispatches_ltf_5m_breakout_alerts():
     assert alert.structure_payloads[0]["alert_type"] == "LTF_5M_HIGH_BREAKOUT"
 
 
-def test_pipeline_dispatches_gold_1h_breakout_alerts():
+def test_pipeline_dispatches_gold_5min_breakout_alerts():
     from core.candle import Candle
 
     alert = _CapturingAlert()
     pipe = Pipeline(min_score=0, min_rr_ratio=0, alerts=[alert], enabled_scenarios=[])
 
     htf = _htf_bullish(symbol="XAU/USD")
-    ltf = _ltf(symbol="XAU/USD", tf="1h")
+    ltf = _ltf(symbol="XAU/USD", tf="5min")
     ltf._append_bos_if_new(
         candle=Candle(
             symbol="XAU/USD",
-            timeframe="1h",
+            timeframe="5min",
             timestamp=datetime.now(tz=timezone.utc),
             open=3300.0,
             high=3310.0,
@@ -228,6 +228,6 @@ def test_pipeline_dispatches_gold_1h_breakout_alerts():
     result = asyncio.run(pipe.run(htf, ltf))
     assert result == []
     assert alert.structure_count == 1
-    assert alert.structure_payloads[0]["alert_type"] == "LTF_1H_HIGH_BREAKOUT"
+    assert alert.structure_payloads[0]["alert_type"] == "LTF_5MIN_HIGH_BREAKOUT"
     assert alert.structure_payloads[0]["symbol"] == "XAU/USD"
-    assert alert.structure_payloads[0]["timeframe_ltf"] == "1h"
+    assert alert.structure_payloads[0]["timeframe_ltf"] == "5min"

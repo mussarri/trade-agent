@@ -82,7 +82,7 @@ class TwelveDataConfig(BaseModel):
     symbols: list[str] = Field(default_factory=list)
     timeframe: str = "1h"
     scenarios: list[str] = Field(default_factory=lambda: ["forex_1h_pullback"])
-    # Wider pivots suit 1h forex structure better than the crypto defaults.
+    # Wider pivots suit forex/commodity structure better than the crypto defaults.
     htf_pivot_length: int = 7
     ltf_pivot_length: int = 4
 
