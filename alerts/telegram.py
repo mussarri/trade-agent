@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from telegram import Bot
@@ -20,27 +21,46 @@ class TelegramAlert(BaseAlert):
     def __init__(self, bot_token: str, chat_id: str):
         self.bot = Bot(token=bot_token)
         self.chat_id = chat_id
+        self.timeout_seconds = 30
+        self.max_attempts = 3
 
     async def send(self, payload: dict) -> None:
         text = self._format_entry(payload)
-        try:
-            await self.bot.send_message(chat_id=self.chat_id, text=text, parse_mode="HTML")
-        except Exception as exc:
-            logger.warning("Telegram entry alert failed: %s", exc)
+        await self._send_message(text, "entry")
 
     async def send_setup(self, payload: dict) -> None:
         text = self._format_setup(payload)
-        try:
-            await self.bot.send_message(chat_id=self.chat_id, text=text, parse_mode="HTML")
-        except Exception as exc:
-            logger.warning("Telegram setup alert failed: %s", exc)
+        await self._send_message(text, "setup")
 
     async def send_structure(self, payload: dict) -> None:
         text = self._format_structure_shift(payload)
-        try:
-            await self.bot.send_message(chat_id=self.chat_id, text=text, parse_mode="HTML")
-        except Exception as exc:
-            logger.warning("Telegram structure alert failed: %s", exc)
+        await self._send_message(text, "structure")
+
+    async def _send_message(self, text: str, alert_kind: str) -> None:
+        for attempt in range(1, self.max_attempts + 1):
+            try:
+                await self.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=text,
+                    parse_mode="HTML",
+                    connect_timeout=self.timeout_seconds,
+                    read_timeout=self.timeout_seconds,
+                    write_timeout=self.timeout_seconds,
+                    pool_timeout=self.timeout_seconds,
+                )
+                return
+            except Exception as exc:
+                if attempt >= self.max_attempts:
+                    logger.warning("Telegram %s alert failed after %s attempts: %s", alert_kind, attempt, exc)
+                    return
+                logger.warning(
+                    "Telegram %s alert failed on attempt %s/%s: %s",
+                    alert_kind,
+                    attempt,
+                    self.max_attempts,
+                    exc,
+                )
+                await asyncio.sleep(attempt)
 
     def _format_setup(self, payload: dict) -> str:
         pair = payload.get("pair") or payload.get("symbol", "").replace("/", "")
